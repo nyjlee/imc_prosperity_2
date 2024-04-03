@@ -104,11 +104,11 @@ class Trader:
         if position_amethysts > 0:
             # Long position
             orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] - 2), bid_volume))
-            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS']), ask_volume))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 1), ask_volume))
 
         if position_amethysts < 0:
             # Short position
-            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS']), bid_volume))
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] - 1), bid_volume))
             orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 2), ask_volume))
 
         print(orders)
@@ -168,11 +168,13 @@ class Trader:
             print(e)
 
         # STARFRUIT STRATEGY
+        """
         try:
             result['STARFRUIT'] = self.starfruit_strategy(state)
         except Exception as e:
             print("Error in STARFRUIT strategy")
             print(e)
+        """
                 
         traderData = "SAMPLE" 
         
