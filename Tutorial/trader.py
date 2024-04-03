@@ -1,6 +1,7 @@
 from typing import Dict, List
-from datamodel import OrderDepth, TradingState, Order
+from datamodel import OrderDepth, TradingState, Order, Symbol, Trade
 import math
+import pandas as pd
 
 
 
@@ -21,12 +22,17 @@ class Trader:
         'STARFRUIT': 20,
     }
 
+    prices_history = {"AMETHYSTS": [], "STARFRUIT": []}
+
     def __init__(self) -> None:
 
         self.ema_prices = dict()
         for product in self.PRODUCTS:
             self.ema_prices[product] = None
         self.ema_param = 0.2
+
+        self.window_size = 21
+
 
     def get_position(self, product, state : TradingState):
         return state.position.get(product, 0)    
@@ -64,7 +70,35 @@ class Trader:
         
         best_bid = max(market_bids)
         best_ask = min(market_asks)
-        return (best_bid + best_ask)/2
+        return (best_bid + best_ask)/2   
+
+    def get_last_price(self, symbol, own_trades: Dict[Symbol, List[Trade]], market_trades: Dict[Symbol, List[Trade]]):
+        recent_trades = []
+        if symbol in own_trades:
+            recent_trades.extend(own_trades[symbol])
+        if symbol in market_trades:
+            recent_trades.extend(market_trades[symbol])
+        recent_trades.sort(key=lambda trade: trade.timestamp)
+        last_trade = recent_trades[-1]
+        return last_trade.price
+
+
+    def update_prices_history(self, own_trades: Dict[Symbol, List[Trade]], market_trades: Dict[Symbol, List[Trade]]):
+        for symbol in self.PRODUCTS:
+            recent_trades = []
+            if symbol in own_trades:
+                recent_trades.extend(own_trades[symbol])
+            if symbol in market_trades:
+                recent_trades.extend(market_trades[symbol])
+
+            recent_trades.sort(key=lambda trade: trade.timestamp)
+
+            for trade in recent_trades:
+                self.prices_history[symbol].append(trade.price)
+
+            while len(self.prices_history[symbol]) > self.window_size:
+                self.prices_history[symbol].pop(0)
+
     
     def update_ema_prices(self, state : TradingState):
         """
@@ -83,7 +117,13 @@ class Trader:
 
         print(self.ema_prices)
 
-    
+    def calculate_sma(self, product, window_size):
+        sma = None
+        prices = pd.Series(self.prices_history[product])
+        if len(prices) >= window_size:
+            window_sum = prices.iloc[-window_size:].sum()
+            sma = window_sum / window_size
+        return sma
 
     def amethysts_strategy(self, state : TradingState) -> List[Order]:
         """
@@ -131,20 +171,16 @@ class Trader:
 
         mid_price = self.get_mid_price('STARFRUIT', state)
 
-        if position_starfruit == 0:
-            # Not long nor short
-            orders.append(Order('STARFRUIT', math.floor(mid_price - 3), bid_volume))
-            orders.append(Order('STARFRUIT', math.ceil(mid_price + 3), ask_volume))
+        last_price = self.get_last_price('STARFRUIT', state.own_trades, state.market_trades)
+        print('Last Price:', last_price)
+        sma = self.calculate_sma('STARFRUIT', 9)
+        print('SMA:', sma)
 
-        if position_starfruit > 0:
-            # Long position
-            orders.append(Order('STARFRUIT', math.floor(mid_price - 4), bid_volume))
-            orders.append(Order('STARFRUIT', math.ceil(mid_price), ask_volume))
-
-        if position_starfruit < 0:
-            # Short position
-            orders.append(Order('STARFRUIT', math.floor(mid_price), bid_volume))
-            orders.append(Order('STARFRUIT', math.ceil(mid_price + 4), ask_volume))
+        
+        if last_price > sma:
+            orders.append(Order('STARFRUIT', math.floor(mid_price - 2), bid_volume))
+        elif last_price < sma:
+            orders.append(Order('STARFRUIT', math.ceil(mid_price + 2), ask_volume))
 
         return orders
 
@@ -158,23 +194,28 @@ class Trader:
         result = {'AMETHYSTS' : [], 'STARFRUIT' : []}
 
         self.update_ema_prices(state)
-        
 
+        # PRICE HISTORY
+        self.update_prices_history(state.own_trades, state.market_trades)
+        #print(self.prices_history)
+
+        """
         # AMETHYSTS STRATEGY
         try:
             result['AMETHYSTS'] = self.amethysts_strategy(state)
         except Exception as e:
             print("Error in AMETHYSTS strategy")
             print(e)
+        """
 
         # STARFRUIT STRATEGY
-        """
+        
         try:
             result['STARFRUIT'] = self.starfruit_strategy(state)
         except Exception as e:
             print("Error in STARFRUIT strategy")
             print(e)
-        """
+      
                 
         traderData = "SAMPLE" 
         
