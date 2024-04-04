@@ -81,6 +81,7 @@ class Trader:
         recent_trades.sort(key=lambda trade: trade.timestamp)
         last_trade = recent_trades[-1]
         return last_trade.price
+    
 
 
     def update_prices_history(self, own_trades: Dict[Symbol, List[Trade]], market_trades: Dict[Symbol, List[Trade]]):
@@ -124,6 +125,34 @@ class Trader:
             window_sum = prices.iloc[-window_size:].sum()
             sma = window_sum / window_size
         return sma
+    
+    def calculate_ema(self, product, window_size):
+        ema = None
+        prices = pd.Series(self.prices_history[product])
+        if len(prices) >= window_size:
+            ema = prices.ewm(span=window_size, adjust=False).mean().iloc[-1]
+        return ema
+    
+    def calculate_vwap(self, symbol, own_trades: Dict[Symbol, List[Trade]], market_trades: Dict[Symbol, List[Trade]]):
+        vwap = None
+        recent_trades = []
+        prices = []
+        volumes = []
+        if symbol in own_trades:
+            recent_trades.extend(own_trades[symbol])
+        if symbol in market_trades:
+            recent_trades.extend(market_trades[symbol])
+
+        recent_trades.sort(key=lambda trade: trade.timestamp)
+
+        for trade in recent_trades:
+            prices.append(trade.price)
+            volumes.append(trade.quantity)
+
+        data = pd.DataFrame({'prices': prices, 'volumes': volumes})
+        vwap = (data['prices'] * data['volumes']).sum() / data['volumes'].sum()
+        return vwap
+
 
     def amethysts_strategy(self, state : TradingState) -> List[Order]:
         """
@@ -173,8 +202,12 @@ class Trader:
 
         last_price = self.get_last_price('STARFRUIT', state.own_trades, state.market_trades)
         print('Last Price:', last_price)
-        sma = self.calculate_sma('STARFRUIT', 9)
+        sma = self.calculate_sma('STARFRUIT', 21)
         print('SMA:', sma)
+        ema = self.calculate_ema('STARFRUIT', 9)
+        print('EMA:', ema)
+        vwap = self.calculate_vwap('STARFRUIT', state.own_trades, state.market_trades)
+        print('VWAP:', vwap)
 
         
         if last_price > sma:
@@ -199,14 +232,14 @@ class Trader:
         self.update_prices_history(state.own_trades, state.market_trades)
         #print(self.prices_history)
 
-        """
+        
         # AMETHYSTS STRATEGY
         try:
             result['AMETHYSTS'] = self.amethysts_strategy(state)
         except Exception as e:
             print("Error in AMETHYSTS strategy")
             print(e)
-        """
+        
 
         # STARFRUIT STRATEGY
         
