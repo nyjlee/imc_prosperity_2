@@ -296,9 +296,9 @@ class Trader:
 
         last_price = self.get_last_price('STARFRUIT', state.own_trades, state.market_trades)
         print('Last Price:', last_price)
-        sma = self.calculate_sma('STARFRUIT', 21)
+        sma = self.calculate_sma('STARFRUIT', 9)
         print('SMA:', sma)
-        ema = self.calculate_ema('STARFRUIT', 4)
+        ema = self.calculate_ema('STARFRUIT', 9)
         print('EMA:', ema)
         vwap = self.calculate_vwap('STARFRUIT', state.own_trades, state.market_trades)
         print('VWAP:', vwap)
@@ -338,14 +338,15 @@ class Trader:
             forecasted_price += val * coef[i]
         
         print('Forecasted Price:',forecasted_price)
+         
+        if mid_price < forecasted_price:
+            orders.append(Order('STARFRUIT', math.floor(mid_price-1.5), bid_volume))
+            orders.append(Order('STARFRUIT', math.ceil(forecasted_price+1), ask_volume))
+        elif mid_price > forecasted_price:
+            orders.append(Order('STARFRUIT', math.ceil(mid_price+1.5), ask_volume))
+            orders.append(Order('STARFRUIT', math.floor(forecasted_price-1), bid_volume))   
         
 
-        if mid_price < forecasted_price:
-            orders.append(Order('STARFRUIT', math.floor(mid_price-2), bid_volume))
-            orders.append(Order('STARFRUIT', math.ceil(forecasted_price+1), ask_volume))
-        if mid_price > forecasted_price:
-            orders.append(Order('STARFRUIT', math.ceil(mid_price+2), ask_volume))
-            orders.append(Order('STARFRUIT', math.floor(forecasted_price-1), bid_volume))
 
         return orders
 
@@ -379,7 +380,7 @@ class Trader:
         # STARFRUIT STRATEGY
         
         try:
-            result['STARFRUIT'] = self.starfruit_strategy2(state)
+            result['STARFRUIT'] = self.starfruit_strategy(state)
         except Exception as e:
             print("Error in STARFRUIT strategy")
             print(e)
