@@ -29,4 +29,5 @@ def plot_prices(df):
     plt.show()
 
 
+plot_prices(amethysts_df)
 plot_prices(starfruit_df)

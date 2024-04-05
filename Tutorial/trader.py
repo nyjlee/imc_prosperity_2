@@ -23,6 +23,7 @@ class Trader:
     }
 
     prices_history = {"AMETHYSTS": [], "STARFRUIT": []}
+    mid_prices_history = {"AMETHYSTS": [], "STARFRUIT": []}
 
     def __init__(self) -> None:
 
@@ -36,16 +37,51 @@ class Trader:
 
     def get_position(self, product, state : TradingState):
         return state.position.get(product, 0)    
+    
+    def get_order_book(self, product, state: TradingState):
+        market_bids = list((state.order_depths[product].buy_orders).items())
+        market_asks = list((state.order_depths[product].sell_orders).items())
+
+        if len(market_asks) > 1:
+            bid_price_1, bid_amount_1 = market_bids[0]
+            bid_price_2, bid_amount_2 = market_bids[1]
+        else:
+            bid_price_1, bid_amount_1 = market_bids[0]
+            bid_price_2, bid_amount_2 = bid_price_1 - 1, 0
+
+        if len(market_asks) > 1:
+            ask_price_1, ask_amount_1 = market_asks[0]
+            ask_price_2, ask_amount_2 = market_asks[1]
+        else:
+            ask_price_1, ask_amount_1 = market_asks[0]
+            ask_price_2, ask_amount_2 = ask_price_1 + 1, 0
+
+        bid_price, ask_price = bid_price_1, ask_price_1
+
+        if bid_amount_1 < 5:
+            bid_price = bid_price_2
+        else:
+            bid_price = bid_price_1 + 1
+        
+        if ask_amount_1 < 5:
+            ask_price = ask_price_2
+        else:
+            ask_price = ask_price_1 - 1
+
+        return bid_price, ask_price
+    
 
     def get_best_bid(self, product, state: TradingState):
         market_bids = state.order_depths[product].buy_orders
-        best_bid = max(market_bids)
+        #best_bid = max(market_bids)
+        best_bid, best_bid_amount = list(market_bids.items())[0]
 
         return best_bid
 
     def get_best_ask(self, product, state: TradingState):
         market_asks = state.order_depths[product].sell_orders
-        best_ask = min(market_asks)
+        #best_ask = min(market_asks)
+        best_ask, best_ask_amount = list(market_asks.items())[0]
 
         return best_ask
     
@@ -82,8 +118,7 @@ class Trader:
         last_trade = recent_trades[-1]
         return last_trade.price
     
-
-
+    
     def update_prices_history(self, own_trades: Dict[Symbol, List[Trade]], market_trades: Dict[Symbol, List[Trade]]):
         for symbol in self.PRODUCTS:
             recent_trades = []
@@ -100,7 +135,15 @@ class Trader:
             while len(self.prices_history[symbol]) > self.window_size:
                 self.prices_history[symbol].pop(0)
 
-    
+    def update_mid_prices_history(self, state):
+            for symbol in self.PRODUCTS:
+                mid_price = self.get_mid_price(symbol, state)
+
+                self.mid_prices_history[symbol].append(mid_price)
+
+                while len(self.mid_prices_history[symbol]) > self.window_size:
+                    self.mid_prices_history[symbol].pop(0)
+
     def update_ema_prices(self, state : TradingState):
         """
         Update the exponential moving average of the prices of each product.
@@ -167,24 +210,73 @@ class Trader:
 
         if position_amethysts == 0:
             # Not long nor short
-            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] - 1), bid_volume))
-            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 1), ask_volume))
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] - 2), bid_volume))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 2), ask_volume))
 
         if position_amethysts > 0:
             # Long position
             orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] - 2), bid_volume))
             orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 1), ask_volume))
+            #orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] - 3), bid_volume))
+            #orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 2), ask_volume))
 
         if position_amethysts < 0:
             # Short position
             orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] - 1), bid_volume))
             orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 2), ask_volume))
+            #orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] - 2), bid_volume))
+            #orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 3), ask_volume))
 
         print(orders)
 
         return orders
 
-        
+    def amethysts_strategy2(self, state : TradingState) -> List[Order]:
+        """
+        Returns a list of orders with trades of amethysts.
+        """
+        orders = []
+
+        position_amethysts = self.get_position('AMETHYSTS', state)
+
+        bid_volume = self.POSITION_LIMITS['AMETHYSTS'] - position_amethysts
+        ask_volume = - self.POSITION_LIMITS['AMETHYSTS'] - position_amethysts
+
+        mid_price = self.get_mid_price('AMETHYSTS', state)
+
+        #bid_price, ask_price = self.get_order_book('AMETHYSTS', state)
+        bid_price = self.get_best_bid('AMETHYSTS', state)
+        ask_price = self.get_best_ask('AMETHYSTS', state)
+
+        if position_amethysts == 0:
+            # Not long nor short
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS']  - 1), bid_volume))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS']  + 1), ask_volume))
+
+        elif position_amethysts > 15:
+            # Long position
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS']  - 3), bid_volume))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] +1), ask_volume))
+
+        elif position_amethysts < -15:
+            # Short position
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] -1), bid_volume))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS']  + 3), ask_volume))
+
+        elif position_amethysts > 0:
+            # Long position
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS']  - 2), bid_volume))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 1), ask_volume))
+
+        elif position_amethysts < 0:
+            # Short position
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] -1), bid_volume))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS']  + 2), ask_volume))
+
+
+        print(orders)
+
+        return orders        
 
     def starfruit_strategy(self, state : TradingState) -> List[Order]:
         """
@@ -198,22 +290,62 @@ class Trader:
         bid_volume = self.POSITION_LIMITS['STARFRUIT'] - position_starfruit
         ask_volume = - self.POSITION_LIMITS['STARFRUIT'] - position_starfruit
 
+        best_bid = self.get_best_bid('STARFRUIT', state)
+        best_ask = self.get_best_ask('STARFRUIT', state)
         mid_price = self.get_mid_price('STARFRUIT', state)
 
         last_price = self.get_last_price('STARFRUIT', state.own_trades, state.market_trades)
         print('Last Price:', last_price)
         sma = self.calculate_sma('STARFRUIT', 21)
         print('SMA:', sma)
-        ema = self.calculate_ema('STARFRUIT', 9)
+        ema = self.calculate_ema('STARFRUIT', 4)
         print('EMA:', ema)
         vwap = self.calculate_vwap('STARFRUIT', state.own_trades, state.market_trades)
         print('VWAP:', vwap)
 
+        if last_price > ema:
+            orders.append(Order('STARFRUIT', math.floor(mid_price - 2.5), bid_volume))
+        elif last_price < ema:
+            orders.append(Order('STARFRUIT', math.ceil(mid_price + 2.5), ask_volume))
+
+        return orders
+
+    def starfruit_strategy2(self, state : TradingState) -> List[Order]:
+        """
+        Returns a list of orders with trades of starfruit.
+        """
+
+        orders = []
+    
+        position_starfruit = self.get_position('STARFRUIT', state)
+
+        bid_volume = self.POSITION_LIMITS['STARFRUIT'] - position_starfruit
+        ask_volume = - self.POSITION_LIMITS['STARFRUIT'] - position_starfruit
+
+        best_bid = self.get_best_bid('STARFRUIT', state)
+        best_ask = self.get_best_ask('STARFRUIT', state)
+        mid_price = self.get_mid_price('STARFRUIT', state)
+
+        last_price = self.get_last_price('STARFRUIT', state.own_trades, state.market_trades)
+        print('Last Price:', last_price)
+
+        lags = self.prices_history['STARFRUIT'][-4:]
+
+        coef = [0.3176191343791975,  0.22955395157579261 ,  0.24255751299309652,  0.20773853347672797]
+        intercept = 12.56819767718207
+        forecasted_price = intercept
+        for i, val in enumerate(lags):
+            forecasted_price += val * coef[i]
         
-        if last_price > sma:
-            orders.append(Order('STARFRUIT', math.floor(mid_price - 2), bid_volume))
-        elif last_price < sma:
-            orders.append(Order('STARFRUIT', math.ceil(mid_price + 2), ask_volume))
+        print('Forecasted Price:',forecasted_price)
+        
+
+        if mid_price < forecasted_price:
+            orders.append(Order('STARFRUIT', math.floor(mid_price-2), bid_volume))
+            orders.append(Order('STARFRUIT', math.ceil(forecasted_price+1), ask_volume))
+        if mid_price > forecasted_price:
+            orders.append(Order('STARFRUIT', math.ceil(mid_price+2), ask_volume))
+            orders.append(Order('STARFRUIT', math.floor(forecasted_price-1), bid_volume))
 
         return orders
 
@@ -230,21 +362,24 @@ class Trader:
 
         # PRICE HISTORY
         self.update_prices_history(state.own_trades, state.market_trades)
+        self.update_mid_prices_history(state)
         #print(self.prices_history)
 
         
         # AMETHYSTS STRATEGY
+        
         try:
-            result['AMETHYSTS'] = self.amethysts_strategy(state)
+            result['AMETHYSTS'] = self.amethysts_strategy2(state)
         except Exception as e:
             print("Error in AMETHYSTS strategy")
             print(e)
+        
         
 
         # STARFRUIT STRATEGY
         
         try:
-            result['STARFRUIT'] = self.starfruit_strategy(state)
+            result['STARFRUIT'] = self.starfruit_strategy2(state)
         except Exception as e:
             print("Error in STARFRUIT strategy")
             print(e)
