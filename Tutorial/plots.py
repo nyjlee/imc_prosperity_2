@@ -34,7 +34,7 @@ def plot_prices(df):
 
 
 #plot_prices(amethysts_df)
-#plot_prices(starfruit_df)
+plot_prices(starfruit_df)
 
 
 amethysts_df['spread'] = amethysts_df['ask_price_1'] - amethysts_df['bid_price_1']
