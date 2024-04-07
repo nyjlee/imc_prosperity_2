@@ -36,8 +36,8 @@ def linear_regression(product_df):
     # Step 2: Manually split your data into features (X) and target (y), then into training and testing sets
     X = product_df[['lag_1', 'lag_2','lag_3']]
     y = product_df['mid_price']
-
-    
+    product_df['mid_price_2'] = product_df['mid_price'].iloc[::-1].values
+    #y = product_df['mid_price_2']
 
     # Using the timestamp index to split the dataset
     train_index = 160000
@@ -45,6 +45,8 @@ def linear_regression(product_df):
     # Ensure that your index is sorted if it's not already
     X_train = X[X.index <= train_index]
     y_train = y[y.index <= train_index]
+
+    y = product_df['mid_price_2']
     X_test = X[X.index > train_index]
     y_test = y[y.index > train_index]
 

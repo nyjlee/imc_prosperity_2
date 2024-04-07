@@ -25,6 +25,8 @@ class Trader:
     prices_history = {"AMETHYSTS": [], "STARFRUIT": []}
     mid_prices_history = {"AMETHYSTS": [], "STARFRUIT": []}
 
+
+
     def __init__(self) -> None:
 
         self.ema_prices = dict()
@@ -34,6 +36,13 @@ class Trader:
 
         self.window_size = 21
 
+        self.current_pnl = dict()
+        self.qt_traded = dict()
+
+        for product in self.PRODUCTS:
+            self.current_pnl[product] = 0
+            self.qt_traded[product] = 0
+
 
     def get_position(self, product, state : TradingState):
         return state.position.get(product, 0)    
@@ -42,19 +51,14 @@ class Trader:
         market_bids = list((state.order_depths[product].buy_orders).items())
         market_asks = list((state.order_depths[product].sell_orders).items())
 
-        if len(market_asks) > 1:
+        if len(market_bids) > 1:
             bid_price_1, bid_amount_1 = market_bids[0]
             bid_price_2, bid_amount_2 = market_bids[1]
-        else:
-            bid_price_1, bid_amount_1 = market_bids[0]
-            bid_price_2, bid_amount_2 = bid_price_1 - 1, 0
 
         if len(market_asks) > 1:
             ask_price_1, ask_amount_1 = market_asks[0]
             ask_price_2, ask_amount_2 = market_asks[1]
-        else:
-            ask_price_1, ask_amount_1 = market_asks[0]
-            ask_price_2, ask_amount_2 = ask_price_1 + 1, 0
+
 
         bid_price, ask_price = bid_price_1, ask_price_1
 
@@ -159,7 +163,7 @@ class Trader:
             else:
                 self.ema_prices[product] = self.ema_param * mid_price + (1-self.ema_param) * self.ema_prices[product]
 
-        print(self.ema_prices)
+        #print(self.ema_prices)
 
     def calculate_sma(self, product, window_size):
         sma = None
@@ -176,6 +180,7 @@ class Trader:
             ema = prices.ewm(span=window_size, adjust=False).mean().iloc[-1]
         return ema
     
+
     def calculate_vwap(self, symbol, own_trades: Dict[Symbol, List[Trade]], market_trades: Dict[Symbol, List[Trade]]):
         vwap = None
         recent_trades = []
@@ -227,7 +232,7 @@ class Trader:
             #orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] - 2), bid_volume))
             #orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 3), ask_volume))
 
-        print(orders)
+        #print(orders)
 
         return orders
 
@@ -278,7 +283,7 @@ class Trader:
             orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS']  + 2), ask_volume))
 
 
-        print(orders)
+        #print(orders)
 
         return orders        
 
@@ -299,7 +304,7 @@ class Trader:
         mid_price = self.get_mid_price('STARFRUIT', state)
 
         last_price = self.get_last_price('STARFRUIT', state.own_trades, state.market_trades)
-        print('Last Price:', last_price)
+        #print('Last Price:', last_price)
         sma = self.calculate_sma('STARFRUIT', 9)
         #print('SMA:', sma)
         ema_8 = self.calculate_ema('STARFRUIT', 8)
@@ -308,10 +313,15 @@ class Trader:
         vwap = self.calculate_vwap('STARFRUIT', state.own_trades, state.market_trades)
         #print('VWAP:', vwap)
 
-        lags = self.prices_history['STARFRUIT'][-4:]
+        lags = self.mid_prices_history['STARFRUIT'][-5:]
 
-        coef = [0.3176191343791975,  0.22955395157579261 ,  0.24255751299309652,  0.20773853347672797]
-        intercept = 12.56819767718207
+        #lags = self.prices_history['STARFRUIT'][-4:]
+        #coef = [0.3176191343791975,  0.22955395157579261 ,  0.24255751299309652,  0.20773853347672797]
+        #intercept = 12.56819767718207
+
+        coef = [0.28730546050106137,  0.19457488964477182 ,  0.20933726944154457,  0.16398511050940906, 0.14295445771547163]
+        intercept = 9.132055913210934
+
         forecasted_price = intercept
         for i, val in enumerate(lags):
             forecasted_price += val * coef[i]
@@ -324,7 +334,7 @@ class Trader:
             orders.append(Order('STARFRUIT', math.ceil(mid_price + 2.5), ask_volume))
         """
 
-        if last_price > ema_8 and ema_8 > ema_21:
+        if last_price > ema_21 and ema_8 > ema_21:
             orders.append(Order('STARFRUIT', math.floor(mid_price - 2.5), bid_volume))
             orders.append(Order('STARFRUIT', math.floor(forecasted_price+2), int(math.floor(ask_volume/2))))
             orders.append(Order('STARFRUIT', math.floor(forecasted_price+3), int(math.ceil(ask_volume/2))))
@@ -352,7 +362,7 @@ class Trader:
         mid_price = self.get_mid_price('STARFRUIT', state)
 
         last_price = self.get_last_price('STARFRUIT', state.own_trades, state.market_trades)
-        print('Last Price:', last_price)
+        #print('Last Price:', last_price)
 
         lags = self.prices_history['STARFRUIT'][-4:]
 
@@ -362,7 +372,7 @@ class Trader:
         for i, val in enumerate(lags):
             forecasted_price += val * coef[i]
         
-        print('Forecasted Price:',forecasted_price)
+        #print('Forecasted Price:',forecasted_price)
          
         if mid_price < forecasted_price:
             orders.append(Order('STARFRUIT', math.floor(mid_price-2.5), bid_volume))
@@ -389,15 +399,43 @@ class Trader:
         self.update_mid_prices_history(state)
         #print(self.prices_history)
 
+
+        for product in state.own_trades.keys():
+            for trade in state.own_trades[product]:
+                if trade.timestamp != state.timestamp-100:
+                    continue
+                # print(f'We are trading {product}, {trade.buyer}, {trade.seller}, {trade.quantity}, {trade.price}')
+                self.qt_traded[product] += abs(trade.quantity)
+                if trade.buyer == "SUBMISSION":
+                    self.current_pnl[product] -= trade.quantity * trade.price
+                else:
+                    self.current_pnl[product] += trade.quantity * trade.price
+
+
         
+        if state.timestamp == 199900:
+            final_pnl = 0
+            for product in state.order_depths.keys():
+                settled_pnl = 0
+                best_sell = min(state.order_depths[product].sell_orders.keys())
+                best_buy = max(state.order_depths[product].buy_orders.keys())
+                mid_price = (best_sell + best_buy) / 2
+
+                if self.get_position(product, state) < 0:
+                    settled_pnl += self.get_position(product, state) * mid_price
+                else:
+                    settled_pnl += self.get_position(product, state) * mid_price
+                final_pnl += settled_pnl + self.current_pnl[product]
+                print(f'\nFor product {product}, Pnl: {settled_pnl + self.current_pnl[product]}, Qty. Traded: {self.qt_traded[product]}')
+
+            print(f'\nFinal Day Expected Pnl: {round(final_pnl,2)}')
         # AMETHYSTS STRATEGY
-        """
+        
         try:
             result['AMETHYSTS'] = self.amethysts_strategy2(state)
         except Exception as e:
             print("Error in AMETHYSTS strategy")
             print(e)
-        """
         
 
         # STARFRUIT STRATEGY
