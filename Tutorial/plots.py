@@ -32,13 +32,25 @@ def plot_prices(df):
 
     plt.show()
 
+    print('Max ask', df['ask_price_3'].max())
+    print('Min bid', df['bid_price_3'].min())
+
 
 #plot_prices(amethysts_df)
-plot_prices(starfruit_df)
+#plot_prices(starfruit_df)
 
+#print('Average Spread Amethysts:', amethysts_df['spread'].mean())
+#print('Average Spread Starfruit:', starfruit_df['spread'].mean())
 
-amethysts_df['spread'] = amethysts_df['ask_price_1'] - amethysts_df['bid_price_1']
-starfruit_df['spread'] = starfruit_df['ask_price_1'] - starfruit_df['bid_price_1']
+def plot_spread(product_df):
+    plt.figure(figsize=(10, 6))  
+    plt.plot(product_df['bid_price_1'] - product_df['ask_price_1'], label='Spread', color='blue')  
+    plt.title('Bid, Ask, and Mid Price Over Time')
+    plt.xlabel('Timestamp')
+    plt.ylabel('Price')
+    plt.legend()  
+    plt.xticks(rotation=45)  
 
-print('Average Spread Amethysts:', amethysts_df['spread'].mean())
-print('Average Spread Starfruit:', starfruit_df['spread'].mean())
+    plt.show()
+
+plot_spread(starfruit_df)

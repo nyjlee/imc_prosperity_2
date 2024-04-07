@@ -38,10 +38,12 @@ class Trader:
 
         self.current_pnl = dict()
         self.qt_traded = dict()
+        self.pnl_tracker = dict()
 
         for product in self.PRODUCTS:
             self.current_pnl[product] = 0
             self.qt_traded[product] = 0
+            self.pnl_tracker[product] = []
 
 
     def get_position(self, product, state : TradingState):
@@ -201,7 +203,16 @@ class Trader:
         vwap = (data['prices'] * data['volumes']).sum() / data['volumes'].sum()
         return vwap
 
+    def calculate_standard_deviation(self, values: List[float]) -> float:
+        mean = sum(values) / len(values)
+        squared_diffs = [(x - mean) ** 2 for x in values]
 
+        variance = sum(squared_diffs) / len(values)
+
+        std_dev = math.sqrt(variance)
+
+        return std_dev
+    
     def amethysts_strategy(self, state : TradingState) -> List[Order]:
         """
         Returns a list of orders with trades of amethysts.
@@ -215,20 +226,20 @@ class Trader:
 
         if position_amethysts == 0:
             # Not long nor short
-            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] - 2), bid_volume))
-            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 2), ask_volume))
+            orders.append(Order('AMETHYSTS', max(9996, math.floor(self.ema_prices['AMETHYSTS'] - 2)), bid_volume))
+            orders.append(Order('AMETHYSTS', min(10004,math.ceil(self.ema_prices['AMETHYSTS'] + 2)), ask_volume))
 
         if position_amethysts > 0:
             # Long position
-            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] - 2), bid_volume))
-            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 1), ask_volume))
+            orders.append(Order('AMETHYSTS', max(9996, math.floor(self.ema_prices['AMETHYSTS'] - 2)), bid_volume))
+            orders.append(Order('AMETHYSTS', min(10004,math.ceil(self.ema_prices['AMETHYSTS'] + 1)), ask_volume))
             #orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] - 3), bid_volume))
             #orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 2), ask_volume))
 
         if position_amethysts < 0:
             # Short position
-            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] - 1), bid_volume))
-            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 2), ask_volume))
+            orders.append(Order('AMETHYSTS', max(9995, math.floor(self.ema_prices['AMETHYSTS'] - 1)), bid_volume))
+            orders.append(Order('AMETHYSTS', min(10005,math.ceil(self.ema_prices['AMETHYSTS'] + 2)), ask_volume))
             #orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] - 2), bid_volume))
             #orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 3), ask_volume))
 
@@ -302,10 +313,11 @@ class Trader:
         best_bid = self.get_best_bid('STARFRUIT', state)
         best_ask = self.get_best_ask('STARFRUIT', state)
         mid_price = self.get_mid_price('STARFRUIT', state)
+        spread = best_ask - best_bid
 
         last_price = self.get_last_price('STARFRUIT', state.own_trades, state.market_trades)
         #print('Last Price:', last_price)
-        sma = self.calculate_sma('STARFRUIT', 9)
+        sma_20 = self.calculate_sma('STARFRUIT', 20)
         #print('SMA:', sma)
         ema_8 = self.calculate_ema('STARFRUIT', 8)
         ema_21 = self.calculate_ema('STARFRUIT', 21)
@@ -334,6 +346,22 @@ class Trader:
             orders.append(Order('STARFRUIT', math.ceil(mid_price + 2.5), ask_volume))
         """
 
+        sd = self.calculate_standard_deviation(self.prices_history['STARFRUIT'][:])
+        upper_limit = sma_20 + 2 * sd
+        lower_limit = sma_20 - 2 * sd
+
+        """
+        if last_price < lower_limit:
+            orders.append(Order('STARFRUIT', math.floor(mid_price-2), bid_volume))
+            orders.append(Order('STARFRUIT', math.floor(mid_price+3), int(math.floor(ask_volume/2))))
+            orders.append(Order('STARFRUIT', math.floor(mid_price+4), int(math.ceil(ask_volume/2))))
+            
+        elif last_price > upper_limit:
+            orders.append(Order('STARFRUIT', math.ceil(mid_price+2), ask_volume))
+            orders.append(Order('STARFRUIT', math.ceil(mid_price-3), int(math.floor(bid_volume/2))))
+            orders.append(Order('STARFRUIT', math.ceil(mid_price-4), int(math.ceil(bid_volume/2))))
+        """
+        
         if last_price > ema_21 and ema_8 > ema_21:
             orders.append(Order('STARFRUIT', math.floor(mid_price - 2.5), bid_volume))
             orders.append(Order('STARFRUIT', math.floor(forecasted_price+2), int(math.floor(ask_volume/2))))
@@ -342,6 +370,7 @@ class Trader:
             orders.append(Order('STARFRUIT', math.ceil(mid_price + 2.5), ask_volume))
             orders.append(Order('STARFRUIT', math.ceil(forecasted_price-2), int(math.floor(bid_volume/2))))
             orders.append(Order('STARFRUIT', math.ceil(forecasted_price-3), int(math.ceil(bid_volume/2))))
+        
 
         return orders
 
@@ -383,6 +412,69 @@ class Trader:
 
         return orders
 
+    def starfruit_strategy3(self, state : TradingState) -> List[Order]:
+        """
+        Returns a list of orders with trades of starfruit.
+        """
+
+        orders = []
+    
+        position_starfruit = self.get_position('STARFRUIT', state)
+
+        bid_volume = self.POSITION_LIMITS['STARFRUIT'] - position_starfruit
+        ask_volume = - self.POSITION_LIMITS['STARFRUIT'] - position_starfruit
+
+        best_bid = self.get_best_bid('STARFRUIT', state)
+        best_ask = self.get_best_ask('STARFRUIT', state)
+        mid_price = self.get_mid_price('STARFRUIT', state)
+        spread = best_ask - best_bid
+
+        last_price = self.get_last_price('STARFRUIT', state.own_trades, state.market_trades)
+        #print('Last Price:', last_price)
+        sma_20 = self.calculate_sma('STARFRUIT', 20)
+        #print('SMA:', sma)
+        ema_8 = self.calculate_ema('STARFRUIT', 8)
+        ema_21 = self.calculate_ema('STARFRUIT', 21)
+        #print('EMA:', ema)
+        vwap = self.calculate_vwap('STARFRUIT', state.own_trades, state.market_trades)
+        #print('VWAP:', vwap)
+
+        lags = self.mid_prices_history['STARFRUIT'][-5:]
+
+        #lags = self.prices_history['STARFRUIT'][-4:]
+        #coef = [0.3176191343791975,  0.22955395157579261 ,  0.24255751299309652,  0.20773853347672797]
+        #intercept = 12.56819767718207
+
+        coef = [0.28730546050106137,  0.19457488964477182 ,  0.20933726944154457,  0.16398511050940906, 0.14295445771547163]
+        intercept = 9.132055913210934
+
+        forecasted_price = intercept
+        for i, val in enumerate(lags):
+            forecasted_price += val * coef[i]
+
+        """
+        if last_price > ema:
+            orders.append(Order('STARFRUIT', math.floor(mid_price - 2.5), bid_volume))
+            orders.append(Order('STARFRUIT', math.floor(mid_price - 2.5), bid_volume))
+        elif last_price < ema:
+            orders.append(Order('STARFRUIT', math.ceil(mid_price + 2.5), ask_volume))
+        """
+
+        sd = self.calculate_standard_deviation(self.prices_history['STARFRUIT'][:])
+        upper_limit = sma_20 + 2 * sd
+        lower_limit = sma_20 - 2 * sd
+
+        
+        if forecasted_price > best_bid+1:
+            orders.append(Order('STARFRUIT', math.floor(best_bid+1), bid_volume))
+            orders.append(Order('STARFRUIT', math.floor(forecasted_price+2), int(math.floor(ask_volume/2))))
+            orders.append(Order('STARFRUIT', math.floor(forecasted_price+3), int(math.ceil(ask_volume/2))))
+        elif forecasted_price < best_ask-1:
+            orders.append(Order('STARFRUIT', math.floor(best_ask-1), ask_volume))
+            orders.append(Order('STARFRUIT', math.ceil(forecasted_price-2), int(math.floor(bid_volume/2))))
+            orders.append(Order('STARFRUIT', math.ceil(forecasted_price-3), int(math.ceil(bid_volume/2))))
+
+        return orders
 
     def run(self, state: TradingState) -> Dict[str, List[Order]]:
         """
@@ -411,8 +503,32 @@ class Trader:
                 else:
                     self.current_pnl[product] += trade.quantity * trade.price
 
-
         
+        final_pnl = 0
+        for product in state.order_depths.keys():
+            product_pnl = 0
+            settled_pnl = 0
+            best_sell = min(state.order_depths[product].sell_orders.keys())
+            best_buy = max(state.order_depths[product].buy_orders.keys())
+            mid_price = (best_sell + best_buy) / 2
+
+            if self.get_position(product, state) < 0:
+                settled_pnl += self.get_position(product, state) * mid_price
+            else:
+                settled_pnl += self.get_position(product, state) * mid_price
+            product_pnl = settled_pnl + self.current_pnl[product]
+            self.pnl_tracker[product].append(product_pnl)
+            final_pnl += settled_pnl + self.current_pnl[product]
+            print(f'\nFor product {product}, Pnl: {settled_pnl + self.current_pnl[product]}, Qty. Traded: {self.qt_traded[product]}')
+        print(f'\nFinal Day Expected Pnl: {round(final_pnl,2)}')
+
+
+        for product in self.pnl_tracker.keys():
+            while len(self.pnl_tracker[product]) > 20:
+                self.pnl_tracker[product].pop(0)
+
+
+        """
         if state.timestamp == 199900:
             final_pnl = 0
             for product in state.order_depths.keys():
@@ -429,6 +545,8 @@ class Trader:
                 print(f'\nFor product {product}, Pnl: {settled_pnl + self.current_pnl[product]}, Qty. Traded: {self.qt_traded[product]}')
 
             print(f'\nFinal Day Expected Pnl: {round(final_pnl,2)}')
+        """
+
         # AMETHYSTS STRATEGY
         
         try:
@@ -440,7 +558,7 @@ class Trader:
 
         # STARFRUIT STRATEGY
         try:
-            result['STARFRUIT'] = self.starfruit_strategy(state)
+            result['STARFRUIT'] = self.starfruit_strategy3(state)
         except Exception as e:
             print("Error in STARFRUIT strategy")
             print(e)

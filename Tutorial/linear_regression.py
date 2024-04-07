@@ -1,5 +1,6 @@
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 import numpy as np
@@ -31,13 +32,9 @@ def linear_regression(product_df):
     # Remove the rows with NaN values that were created by shifting
     product_df  = product_df.iloc[3:].copy()
 
-
-
     # Step 2: Manually split your data into features (X) and target (y), then into training and testing sets
-    X = product_df[['lag_1', 'lag_2','lag_3']]
+    X = product_df[['lag_1', 'lag_2','lag_3', 'lag_4', 'lag_5']]
     y = product_df['mid_price']
-    product_df['mid_price_2'] = product_df['mid_price'].iloc[::-1].values
-    #y = product_df['mid_price_2']
 
     # Using the timestamp index to split the dataset
     train_index = 160000
@@ -46,7 +43,6 @@ def linear_regression(product_df):
     X_train = X[X.index <= train_index]
     y_train = y[y.index <= train_index]
 
-    y = product_df['mid_price_2']
     X_test = X[X.index > train_index]
     y_test = y[y.index > train_index]
 
@@ -84,5 +80,53 @@ def linear_regression(product_df):
     plt.legend()
     plt.show()
 
+#linear_regression(starfruit_df)
 
-linear_regression(starfruit_df)
+
+def linear_regression_with_cv_and_parameters(product_df):
+    # Copy the DataFrame to avoid any potential SettingWithCopyWarning when modifying
+    product_df = product_df.copy()
+    
+    # Add lagged features safely using .loc to avoid SettingWithCopyWarning
+    for i in range(1, 6):
+        product_df.loc[:, f'lag_{i}'] = product_df['mid_price'].shift(i)
+
+    # Clean rows with NaN values that were created by shifting
+    product_df.dropna(inplace=True)
+
+    # Prepare features and target variable
+    X = product_df[['lag_1', 'lag_2', 'lag_3', 'lag_4', 'lag_5']]
+    y = product_df['mid_price']
+
+    tscv = TimeSeriesSplit(n_splits=5)
+    mse_scores = []
+    intercepts = []
+    coefficients = []
+
+    for train_index, test_index in tscv.split(X):
+        X_train, X_test = X.iloc[train_index], X.iloc[test_index]
+        y_train, y_test = y.iloc[train_index], y.iloc[test_index]
+
+        model = LinearRegression()
+        model.fit(X_train, y_train)
+
+        # Store intercepts and coefficients for analysis
+        intercepts.append(model.intercept_)
+        coefficients.append(model.coef_)
+
+        y_pred = model.predict(X_test)
+        mse = mean_squared_error(y_test, y_pred)
+        mse_scores.append(mse)
+
+    # Reporting average MSE, intercept, and coefficients
+    average_mse = np.mean(mse_scores)
+    print(f'Average Mean Squared Error across the folds: {average_mse}')
+
+    avg_intercept = np.mean(intercepts)
+    avg_coefficients = np.mean(coefficients, axis=0)
+
+    print(f'Average Intercept: {avg_intercept}')
+    for i, coef in enumerate(avg_coefficients):
+        print(f'lag_{i+1}: {coef}')
+
+linear_regression_with_cv_and_parameters(starfruit_df)
