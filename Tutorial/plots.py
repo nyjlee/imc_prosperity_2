@@ -13,6 +13,8 @@ df = df.set_index('timestamp')
 amethysts_df = df[df['product'] == 'AMETHYSTS']
 starfruit_df = df[df['product'] == 'STARFRUIT']
 
+
+
 def plot_prices(df):
 
     plt.figure(figsize=(10, 6))  

@@ -1,0 +1,69 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import os
+
+script_dir = os.path.dirname(__file__)
+
+csv_file_path_0 = os.path.join(script_dir, 'data', 'prices_round_1_day_0.csv')
+csv_file_path_1 = os.path.join(script_dir, 'data', 'prices_round_1_day_-1.csv')
+csv_file_path_2 = os.path.join(script_dir, 'data', 'prices_round_1_day_-2.csv')
+
+
+df_0 = pd.read_csv(csv_file_path_0, sep=';')
+df_1 = pd.read_csv(csv_file_path_1, sep=';')
+df_2 = pd.read_csv(csv_file_path_2, sep=';')
+
+
+for i, df in enumerate([df_2, df_1, df_0]):
+    df['timestamp'] = df['timestamp'] / 100 + i * 10000
+
+
+df = pd.concat([df_2, df_1])
+df = pd.concat([df, df_0])
+df = df.set_index('timestamp')
+
+amethysts_df = df[df['product'] == 'AMETHYSTS']
+starfruit_df = df[df['product'] == 'STARFRUIT']
+
+
+def plot_prices(df):
+
+    plt.figure(figsize=(10, 6))  
+    #plt.plot(df['bid_price_1'], label='Bid', color='blue')  
+    #plt.plot(df['ask_price_1'], label='Ask', color='blue')  
+    #plt.plot(df['bid_price_2'], label='Bid', color='orange')  
+    #plt.plot(df['ask_price_2'], label='Ask', color='orange')  
+    #plt.plot(df['bid_price_3'], label='Bid', color='red')  
+    #plt.plot(df['ask_price_3'], label='Ask', color='red')  
+    plt.plot(df['mid_price'], label='Mid Price', color='green')  
+
+    plt.title('Mid Price Over Time')
+    plt.xlabel('Timestamp')
+    plt.ylabel('Price')
+    plt.legend()  
+    plt.xticks(rotation=45)  
+
+    plt.show()
+
+    print('Max ask', df['ask_price_1'].max())
+    print('Min bid', df['bid_price_1'].min())
+
+
+plot_prices(amethysts_df)
+plot_prices(starfruit_df)
+
+#print('Average Spread Amethysts:', amethysts_df['spread'].mean())
+#print('Average Spread Starfruit:', starfruit_df['spread'].mean())
+
+def plot_spread(product_df):
+    plt.figure(figsize=(10, 6))  
+    plt.plot(product_df['bid_price_1'] - product_df['ask_price_1'], label='Spread', color='blue')  
+    plt.title('Bid, Ask, and Mid Price Over Time')
+    plt.xlabel('Timestamp')
+    plt.ylabel('Price')
+    plt.legend()  
+    plt.xticks(rotation=45)  
+
+    plt.show()
+
+#plot_spread(starfruit_df)

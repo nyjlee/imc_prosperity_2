@@ -226,13 +226,13 @@ class Trader:
 
         if position_amethysts == 0:
             # Not long nor short
-            orders.append(Order('AMETHYSTS', max(9996, math.floor(self.ema_prices['AMETHYSTS'] - 2)), bid_volume))
-            orders.append(Order('AMETHYSTS', min(10004,math.ceil(self.ema_prices['AMETHYSTS'] + 2)), ask_volume))
+            orders.append(Order('AMETHYSTS', max(9995, math.floor(self.ema_prices['AMETHYSTS'] - 2)), bid_volume))
+            orders.append(Order('AMETHYSTS', min(10005,math.ceil(self.ema_prices['AMETHYSTS'] + 2)), ask_volume))
 
         if position_amethysts > 0:
             # Long position
-            orders.append(Order('AMETHYSTS', max(9996, math.floor(self.ema_prices['AMETHYSTS'] - 2)), bid_volume))
-            orders.append(Order('AMETHYSTS', min(10004,math.ceil(self.ema_prices['AMETHYSTS'] + 1)), ask_volume))
+            orders.append(Order('AMETHYSTS', max(9995, math.floor(self.ema_prices['AMETHYSTS'] - 2)), bid_volume))
+            orders.append(Order('AMETHYSTS', min(10005,math.ceil(self.ema_prices['AMETHYSTS'] + 1)), ask_volume))
             #orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] - 3), bid_volume))
             #orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 2), ask_volume))
 
@@ -350,7 +350,7 @@ class Trader:
         upper_limit = sma_20 + 2 * sd
         lower_limit = sma_20 - 2 * sd
 
-        """
+        
         if last_price < lower_limit:
             orders.append(Order('STARFRUIT', math.floor(mid_price-2), bid_volume))
             orders.append(Order('STARFRUIT', math.floor(mid_price+3), int(math.floor(ask_volume/2))))
@@ -360,16 +360,16 @@ class Trader:
             orders.append(Order('STARFRUIT', math.ceil(mid_price+2), ask_volume))
             orders.append(Order('STARFRUIT', math.ceil(mid_price-3), int(math.floor(bid_volume/2))))
             orders.append(Order('STARFRUIT', math.ceil(mid_price-4), int(math.ceil(bid_volume/2))))
-        """
+        
         
         if last_price > ema_21 and ema_8 > ema_21:
             orders.append(Order('STARFRUIT', math.floor(mid_price - 2.5), bid_volume))
-            orders.append(Order('STARFRUIT', math.floor(forecasted_price+2), int(math.floor(ask_volume/2))))
-            orders.append(Order('STARFRUIT', math.floor(forecasted_price+3), int(math.ceil(ask_volume/2))))
+            orders.append(Order('STARFRUIT', math.floor(mid_price+2), int(math.floor(ask_volume/2))))
+            orders.append(Order('STARFRUIT', math.floor(mid_price+3), int(math.ceil(ask_volume/2))))
         elif last_price < ema_21 and ema_8 < ema_21:
             orders.append(Order('STARFRUIT', math.ceil(mid_price + 2.5), ask_volume))
-            orders.append(Order('STARFRUIT', math.ceil(forecasted_price-2), int(math.floor(bid_volume/2))))
-            orders.append(Order('STARFRUIT', math.ceil(forecasted_price-3), int(math.ceil(bid_volume/2))))
+            orders.append(Order('STARFRUIT', math.ceil(mid_price-2), int(math.floor(bid_volume/2))))
+            orders.append(Order('STARFRUIT', math.ceil(mid_price-3), int(math.ceil(bid_volume/2))))
         
 
         return orders
@@ -548,21 +548,22 @@ class Trader:
         """
 
         # AMETHYSTS STRATEGY
-        
+        """
         try:
             result['AMETHYSTS'] = self.amethysts_strategy2(state)
         except Exception as e:
             print("Error in AMETHYSTS strategy")
             print(e)
-        
         """
+        
         # STARFRUIT STRATEGY
+        
         try:
             result['STARFRUIT'] = self.starfruit_strategy3(state)
         except Exception as e:
             print("Error in STARFRUIT strategy")
             print(e)
-        """
+        
                 
         traderData = "SAMPLE" 
         
