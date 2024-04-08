@@ -2,7 +2,7 @@ from typing import Dict, List
 from datamodel import OrderDepth, TradingState, Order, Symbol, Trade
 import math
 import pandas as pd
-
+import numpy as np
 
 
 class Trader:
@@ -24,7 +24,7 @@ class Trader:
 
     prices_history = {"AMETHYSTS": [], "STARFRUIT": []}
     mid_prices_history = {"AMETHYSTS": [], "STARFRUIT": []}
-
+    spread_history = {"AMETHYSTS": [], "STARFRUIT": []}
 
 
     def __init__(self) -> None:
@@ -125,6 +125,23 @@ class Trader:
         return last_trade.price
     
     
+    def get_spread(self, product, state : TradingState):
+        market_bids = state.order_depths[product].buy_orders
+        market_asks = state.order_depths[product].sell_orders
+
+        default_price = self.ema_prices[product]
+        if default_price is None:
+            default_price = self.DEFAULT_PRICES[product]
+        
+        if len(market_bids) == 0 or len(market_asks) == 0:
+            return np.nan
+        
+        best_bid = max(market_bids)
+        best_ask = min(market_asks)
+        spread = best_ask - best_bid
+        return spread
+        
+
     def update_prices_history(self, own_trades: Dict[Symbol, List[Trade]], market_trades: Dict[Symbol, List[Trade]]):
         for symbol in self.PRODUCTS:
             recent_trades = []
@@ -166,6 +183,11 @@ class Trader:
                 self.ema_prices[product] = self.ema_param * mid_price + (1-self.ema_param) * self.ema_prices[product]
 
         #print(self.ema_prices)
+
+    def update_spread_history(self, state : TradingState):
+        for product in self.PRODUCTS:
+            spread = self.get_spread(product, state)
+            self.spread_history[product].append(spread)
 
     def calculate_sma(self, product, window_size):
         sma = None
@@ -489,6 +511,7 @@ class Trader:
         # PRICE HISTORY
         self.update_prices_history(state.own_trades, state.market_trades)
         self.update_mid_prices_history(state)
+        self.update_spread_history(state)
         #print(self.prices_history)
 
 
