@@ -27,16 +27,17 @@ for i, df in enumerate([df_2, df_1, df_0]):
 
 df = pd.concat([df_2, df_1])
 df = pd.concat([df, df_0])
+df = df[df['timestamp'] > 1000]
 df = df.set_index('timestamp')
 
 
 amethysts_df = df[df['product'] == 'AMETHYSTS']
 starfruit_df = df[df['product'] == 'STARFRUIT']
 
+
 amethysts_df = amethysts_df['mid_price']
 starfruit_df = (starfruit_df['mid_price'])
-
-
+print(starfruit_df)
 
 """
 model = auto_arima(starfruit_df, 
@@ -69,7 +70,7 @@ for key, value in result[4].items():
 
 
 
-model = ARIMA(starfruit_df, order=(6,1,3))
+model = ARIMA(starfruit_df, order=(5,1,3))
 model_fit = model.fit()
 print(model_fit.summary())
 
