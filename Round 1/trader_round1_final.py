@@ -36,7 +36,7 @@ class Trader:
         self.ema_prices = dict()
         for product in self.PRODUCTS:
             self.ema_prices[product] = None
-        self.ema_param = 0.1
+        self.ema_param = 0.
 
         self.window_size = 81
 
@@ -236,9 +236,21 @@ class Trader:
 
         position_amethysts = self.get_position('AMETHYSTS', state)
 
-        bid_volume = self.POSITION_LIMITS['AMETHYSTS'] - position_amethysts
-        ask_volume = - self.POSITION_LIMITS['AMETHYSTS'] - position_amethysts
+        bid_volume = (self.POSITION_LIMITS['AMETHYSTS'] - position_amethysts) 
+        ask_volume = (- self.POSITION_LIMITS['AMETHYSTS'] - position_amethysts)
 
+        """
+        if bid_volume != 0:
+            bid_volume = (bid_volume - 1) / 3
+        else:
+            bid_volume = 0
+        
+        if ask_volume != 0:
+            ask_volume = (ask_volume + 1) / 3
+        else:
+            ask_volume = 0
+        """
+            
         """
         orders.append(Order('AMETHYSTS', 9996, bid_volume))
         orders.append(Order('AMETHYSTS', 1004, ask_volume))
@@ -248,9 +260,21 @@ class Trader:
         best_ask = self.get_best_ask('AMETHYSTS', state)
         mid_price = self.get_mid_price('AMETHYSTS', state)
 
-        orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS']  - 1), bid_volume))
-        orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS']  + 1), ask_volume))
+        spread = best_ask - best_bid
 
+        ema = self.ema_prices['AMETHYSTS']
+        last_price = self.get_last_price('AMETHYSTS', state.own_trades, state.market_trades)
+
+        print('EMA: ', ema)
+        print('Last Price:', last_price)
+
+        orders.append(Order('AMETHYSTS', 9998, int(math.floor((bid_volume)))))
+        orders.append(Order('AMETHYSTS', 10002, int(math.floor((ask_volume)))))
+        
+        #orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS']  - 1), int(math.floor((bid_volume)))))
+        #orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS']  + 1), int(math.floor((ask_volume)))))
+       
+        
         """
         if position_amethysts == 0:
             # Not long nor short
@@ -885,7 +909,7 @@ class Trader:
 
 
         # AMETHYSTS STRATEGY
-        
+    
         try:
             result['AMETHYSTS'] = self.amethysts_strategy(state)
         except Exception as e:
@@ -894,13 +918,13 @@ class Trader:
         
 
         # STARFRUIT STRATEGY
-        
+        """
         try:
             result['STARFRUIT'] = self.starfruit_strategy5(state)
         except Exception as e:
             print("Error in STARFRUIT strategy")
             print(e)
-        
+        """
                 
         traderData = "SAMPLE" 
         
