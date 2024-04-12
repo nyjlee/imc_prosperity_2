@@ -388,7 +388,76 @@ class Trader:
 
         #print(orders)
 
-        return orders        
+        return orders
+    
+    def amethysts_strategy3(self, state : TradingState) -> List[Order]:
+        """
+        Buying and Selling based on last trade price vs mean price
+        """
+        orders = []
+        position_amethysts = self.get_position('AMETHYSTS', state)
+
+        bid_volume = self.POSITION_LIMITS['AMETHYSTS'] - position_amethysts
+        ask_volume = - self.POSITION_LIMITS['AMETHYSTS'] - position_amethysts
+        last_price = self.get_last_price('AMETHYSTS', state.own_trades, state.market_trades)
+
+        if len(self.prices_history['AMETHYSTS']) > 5:
+            upper_band = self.calculate_sma('AMETHYSTS', 10) + 0.3 * self.calculate_standard_deviation(self.prices_history['AMETHYSTS'][-5:])
+            lower_band = self.calculate_sma('AMETHYSTS', 10) - 0.3 * self.calculate_standard_deviation(self.prices_history['AMETHYSTS'][-5:])
+            
+            if last_price > upper_band:
+                orders.append(Order('AMETHYSTS', math.floor(last_price - 1), ask_volume))
+            elif last_price < lower_band:
+                orders.append(Order('AMETHYSTS', math.ceil(last_price + 1), bid_volume))
+        else:
+            if last_price > 10000:
+                orders.append(Order('AMETHYSTS', math.floor(last_price - 1), ask_volume))
+            elif last_price < 10000:
+                orders.append(Order('AMETHYSTS', math.ceil(last_price + 1), bid_volume))
+            
+            #print(orders, upper_band, lower_band, last_price)
+
+        return orders
+
+
+    def amethysts_strategy4(self, state : TradingState) -> List[Order]:
+        """
+        Buying and Selling based on last trade price vs mean price (ceiling floor version)
+        """
+        orders = []
+        position_amethysts = self.get_position('AMETHYSTS', state)
+
+        bid_volume = self.POSITION_LIMITS['AMETHYSTS'] - position_amethysts
+        ask_volume = - self.POSITION_LIMITS['AMETHYSTS'] - position_amethysts
+        last_price = self.get_last_price('AMETHYSTS', state.own_trades, state.market_trades)
+
+        if last_price > 10000:
+            orders.append(Order('AMETHYSTS', math.floor(last_price), ask_volume))
+            if len(self.prices_history["AMETHYSTS"]) > 5:
+
+                if len([i for i in self.prices_history["AMETHYSTS"][-20:] if i > 10000])>18:
+                    orders.append(Order('AMETHYSTS', math.ceil(10000), math.floor(bid_volume*0.3)))
+                else:
+                    for number in reversed(self.prices_history["AMETHYSTS"]):
+                        if number < 10000:
+                            orders.append(Order('AMETHYSTS', math.floor(number), bid_volume))
+                            break
+
+        elif last_price < 10000:
+            orders.append(Order('AMETHYSTS', math.ceil(last_price), bid_volume))
+
+            if len(self.prices_history["AMETHYSTS"]) > 5:
+                if len([i for i in self.prices_history["AMETHYSTS"][-20:] if i < 10000])>18:
+                    orders.append(Order('AMETHYSTS', math.floor(10000), math.floor(ask_volume*0.3)))
+                else:
+                    for number in reversed(self.prices_history["AMETHYSTS"]):
+                        if number > 10000:
+                            orders.append(Order('AMETHYSTS', math.floor(number), ask_volume))
+                            break
+        
+        #print(orders, last_price)
+        
+        return orders
 
     def amethysts_strategy3(self, state : TradingState) -> List[Order]:
         """
