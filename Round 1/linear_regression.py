@@ -13,7 +13,7 @@ csv_file_path_0 = os.path.join(script_dir, 'data', 'prices_round_1_day_0.csv')
 csv_file_path_1 = os.path.join(script_dir, 'data', 'prices_round_1_day_-1.csv')
 csv_file_path_2 = os.path.join(script_dir, 'data', 'prices_round_1_day_-2.csv')
 
-
+"""
 df_0 = pd.read_csv(csv_file_path_0, sep=';')
 df_1 = pd.read_csv(csv_file_path_1, sep=';')
 df_2 = pd.read_csv(csv_file_path_2, sep=';')
@@ -29,7 +29,7 @@ df = pd.concat([df, df_0])
 csv_file_path = os.path.join(script_dir, 'data', 'sample.csv')
 
 df = pd.read_csv(csv_file_path, sep=';')
-"""
+
 df = df.set_index('timestamp')
 
 df['spread'] = df['ask_price_1'] - df['bid_price_1']

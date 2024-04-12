@@ -14,20 +14,23 @@ script_dir = os.path.dirname(__file__)
 csv_file_path_0 = os.path.join(script_dir, 'data', 'prices_round_1_day_0.csv')
 csv_file_path_1 = os.path.join(script_dir, 'data', 'prices_round_1_day_-1.csv')
 csv_file_path_2 = os.path.join(script_dir, 'data', 'prices_round_1_day_-2.csv')
+csv_file_path_3 = os.path.join(script_dir, 'data', 'output_round1.csv')
 
 
 df_0 = pd.read_csv(csv_file_path_0, sep=';')
 df_1 = pd.read_csv(csv_file_path_1, sep=';')
 df_2 = pd.read_csv(csv_file_path_2, sep=';')
+df_3 = pd.read_csv(csv_file_path_3, sep=';')
 
 
-for i, df in enumerate([df_2, df_1, df_0]):
+for i, df in enumerate([df_2, df_1, df_0, df_3]):
     df['timestamp'] = df['timestamp'] / 100 + i * 10000
 
 
 df = pd.concat([df_2, df_1])
 df = pd.concat([df, df_0])
-df = df[df['timestamp'] > 1000]
+df = pd.concat([df, df_3])
+#df = df[df['timestamp'] < 20000]
 df = df.set_index('timestamp')
 
 
@@ -70,7 +73,7 @@ for key, value in result[4].items():
 
 
 
-model = ARIMA(starfruit_df, order=(5,1,3))
+model = ARIMA(starfruit_df, order=(6,1,3))
 model_fit = model.fit()
 print(model_fit.summary())
 
