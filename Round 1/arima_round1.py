@@ -61,7 +61,6 @@ model = auto_arima(starfruit_df,
 print(model.summary())
 """
 
-
 # Assuming 'series' is your Pandas Series with the time series data
 result = adfuller(starfruit_df)
 
@@ -72,11 +71,9 @@ for key, value in result[4].items():
     print('\t%s: %.3f' % (key, value))
 
 
-
 model = ARIMA(starfruit_df, order=(6,1,3))
 model_fit = model.fit()
 print(model_fit.summary())
-
 
 # Get the in-sample residuals
 residuals = model_fit.resid

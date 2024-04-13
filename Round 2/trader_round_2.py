@@ -89,14 +89,14 @@ class Trader:
         #best_bid = max(market_bids)
         best_bid, best_bid_amount = list(market_bids.items())[0]
 
-        return best_bid
+        return best_bid, best_bid_amount
 
     def get_best_ask(self, product, state: TradingState):
         market_asks = state.order_depths[product].sell_orders
         #best_ask = min(market_asks)
         best_ask, best_ask_amount = list(market_asks.items())[0]
 
-        return best_ask
+        return best_ask, best_ask_amount
     
     def get_mid_price(self, product, state : TradingState):
 
@@ -157,10 +157,10 @@ class Trader:
                 while len(self.mid_prices_history[symbol]) > self.window_size:
                     self.mid_prices_history[symbol].pop(0)
 
-    def update_diff_history(self, mid_prices_history):
+    def update_diff_history(self, p_history):
         for symbol in self.PRODUCTS:
-            if len(mid_prices_history[symbol]) >=2:
-                diff = mid_prices_history[symbol][-1] - mid_prices_history[symbol][-2]
+            if len(p_history[symbol]) >=2:
+                diff = p_history[symbol][-1] - p_history[symbol][-2]
                 
                 self.diff_history[symbol].append(diff)
 
@@ -258,18 +258,18 @@ class Trader:
         last_price = self.get_last_price('AMETHYSTS', state.own_trades, state.market_trades)
 
         ema = self.ema_prices['AMETHYSTS']
-
         
         spread = 1
         open_spread = 3
         position_limit = 20
-        position_spread = 15
+        position_spread = 16
         current_position = state.position.get("AMETHYSTS",0)
         best_ask = 0
         best_bid = 0
                 
         order_depth_ame: OrderDepth = state.order_depths["AMETHYSTS"]
                 
+        # Check for anyone willing to sell for lower than 10 000 - 1
         if len(order_depth_ame.sell_orders) > 0:
             best_ask = min(order_depth_ame.sell_orders.keys())
 
@@ -280,6 +280,7 @@ class Trader:
         else:
             best_ask_volume = 0
 
+        # Check for buyers above 10 000 + 1
         if len(order_depth_ame.buy_orders) > 0:
             best_bid = max(order_depth_ame.buy_orders.keys())
 
@@ -327,6 +328,7 @@ class Trader:
         
         return orders
 
+
     def starfruit_strategy(self, state : TradingState) -> List[Order]:
         """
         Returns a list of orders with trades of starfruit.
@@ -343,22 +345,8 @@ class Trader:
         best_ask = self.get_best_ask('STARFRUIT', state)
         mid_price = self.get_mid_price('STARFRUIT', state)
         spread = (best_ask - best_bid) / 2
+        last_price = self.get_last_price('STARFRUIT', state.own_trades, state.market_trades)
 
-        sma_81 = self.calculate_sma('STARFRUIT', 81)
-        sma_50 = self.calculate_sma('STARFRUIT', 50)
-        sma_21 = self.calculate_sma('STARFRUIT', 21)
-
-        # Calculate daily price changes
-        price_changes = np.diff(self.prices_history['STARFRUIT'])  # This will give you the difference between each price and the previous one
-
-        # Set the number of days for the EMA period
-        d = 20  # You can adjust this value based on your needs
-
-        # Calculate EMA of price changes
-        ema = [price_changes[0]]  # Initialize EMA with the first price change
-        for change in price_changes[1:]:
-            ema.append((change * (2 / (1 + d))) + ema[-1] * (1 - (2 / (1 + d))))
-        volatility = ema[-1]
 
         if len(self.diff_history['STARFRUIT']) >= 6:
             AR_L1 = self.diff_history['STARFRUIT'][-1]
@@ -377,41 +365,65 @@ class Trader:
             #self.errors_history['STARFRUIT'].extend([1.682936, -2.797327, -0.480615])
             
             self.errors_history['STARFRUIT'].extend([-4.218699, -0.945694, 0.298280])
+
+            #self.errors_history['STARFRUIT'].extend([-3.258368, -3.353484, -3.593285])
       
         else:
             MA_L1 = self.errors_history['STARFRUIT'][-1]
             MA_L2 = self.errors_history['STARFRUIT'][-2]
             MA_L3 = self.errors_history['STARFRUIT'][-3]
         
-
-        
         #use this!
         #forecasted_diff = (AR_L1 * -1.1102) + (AR_L2 * -0.7276) + (AR_L3 * -0.0854) + (AR_L4 * -0.0674)
         #+ (AR_L5 * -0.0437) + (AR_L6 * -0.0176)+ (MA_L1 *  0.4021) + (MA_L2 * -0.0587) + (MA_L3 * -0.4357)
 
+        #new data
         forecasted_diff = (AR_L1 * -1.4799) + (AR_L2 * -0.8168) + (AR_L3 * -0.0868) + (AR_L4 * -0.0693)
         + (AR_L5 * -0.0492) + (AR_L6 * -0.0221)+ (MA_L1 *  0.7712) + (MA_L2 * -0.2324) + (MA_L3 * -0.4996)
 
+        #price instead of mid price
+        #forecasted_diff = (AR_L1 * -0.5038) + (AR_L2 * -0.4052) + (AR_L3 * -0.0110) + (AR_L4 * -0.0272)
+        #+ (AR_L5 * -0.0209) + (AR_L6 * -0.0107)+ (MA_L1 *  -0.2193) + (MA_L2 * 0.0157) + (MA_L3 * -0.2858)
+
         self.forecasted_diff_history['STARFRUIT'].append(forecasted_diff)
-        
+
         forecasted_price = mid_price + forecasted_diff  
 
-        last_price = self.get_last_price('STARFRUIT', state.own_trades, state.market_trades)  
-        
-        if forecasted_price > best_bid+1:
+        #play with diff comb
+        if forecasted_price > best_bid+2:
             orders.append(Order('STARFRUIT', math.floor(best_bid+1), bid_volume))
             #orders.append(Order('STARFRUIT', math.floor(best_bid+2), int(math.floor(bid_volume/2))))
-            orders.append(Order('STARFRUIT', math.floor(forecasted_price+3), int(math.floor(ask_volume/2))))
-            orders.append(Order('STARFRUIT', math.floor(forecasted_price+4), int(math.ceil(ask_volume/2))))
+            orders.append(Order('STARFRUIT', math.floor(forecasted_price+spread/2), int(math.floor(ask_volume/2))))
+            orders.append(Order('STARFRUIT', math.floor(forecasted_price+spread/3), int(math.ceil(ask_volume/2))))
         elif forecasted_price < best_ask-2:
             orders.append(Order('STARFRUIT', math.floor(best_ask-1), ask_volume))
             #orders.append(Order('STARFRUIT', math.floor(best_ask-2), int(math.floor(ask_volume/2))))
-            orders.append(Order('STARFRUIT', math.ceil(forecasted_price-3), int(math.floor(bid_volume/2))))
-            orders.append(Order('STARFRUIT', math.ceil(forecasted_price-4), int(math.ceil(bid_volume/2))))
+            orders.append(Order('STARFRUIT', math.ceil(forecasted_price-spread/2), int(math.floor(bid_volume/2))))
+            orders.append(Order('STARFRUIT', math.ceil(forecasted_price-spread/3), int(math.ceil(bid_volume/2))))
         
 
         return orders
     
+
+    def orchids_strategy(self, state : TradingState) -> List[Order]:
+        """
+        Returns a list of orders with trades of orchids.
+        """
+
+        orders = []
+    
+        position_orchids = self.get_position('ORCHIDS', state)
+
+        observations = state.observations
+        conversion_observations = observations.conversionObservations
+        orchid_observations = conversion_observations['ORCHIDS']
+
+        bid = orchid_observations.bidPrice
+        print(bid)
+  
+        return orders
+    
+
 
     def run(self, state: TradingState) -> Dict[str, List[Order]]:
         """
@@ -419,13 +431,14 @@ class Trader:
         and outputs a list of orders to be sent
         """
         # Initialize the method output dict as an empty dict
-        result = {'AMETHYSTS' : [], 'STARFRUIT' : []}
+        result = {'AMETHYSTS' : [], 'STARFRUIT' : [], 'ORCHIDS' : []}
 
         self.update_ema_prices(state)
 
         # PRICE HISTORY
         self.update_prices_history(state.own_trades, state.market_trades)
         self.update_mid_prices_history(state)
+        #self.update_diff_history(self.mid_prices_history)
         self.update_diff_history(self.mid_prices_history)
         #print(self.prices_history)
 
@@ -441,7 +454,7 @@ class Trader:
                 else:
                     self.current_pnl[product] += trade.quantity * trade.price
 
-        
+        """
         final_pnl = 0
         for product in state.order_depths.keys():
             product_pnl = 0
@@ -469,7 +482,7 @@ class Trader:
                 self.forecasted_diff_history[product].pop(0)
             while len(self.errors_history[product]) > 10:
                 self.errors_history[product].pop(0)
-           
+        """   
 
 
         # AMETHYSTS STRATEGY
@@ -479,7 +492,7 @@ class Trader:
         except Exception as e:
             print("Error in AMETHYSTS strategy")
             print(e)
-        """
+        
         
         # STARFRUIT STRATEGY
         try:
@@ -487,7 +500,14 @@ class Trader:
         except Exception as e:
             print("Error in STARFRUIT strategy")
             print(e)
-        
+        """
+
+        # ORCHIDS STRATEGY
+        try:
+            result['ORCHIDS'] = self.orchids_strategy(state)
+        except Exception as e:
+            print("Error in ORCHIDS strategy")
+            print(e)
                 
         traderData = "SAMPLE" 
         
