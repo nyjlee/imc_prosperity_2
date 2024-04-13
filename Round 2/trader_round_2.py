@@ -413,13 +413,20 @@ class Trader:
         orders = []
     
         position_orchids = self.get_position('ORCHIDS', state)
+        bid_price = self.get_best_bid('ORCHIDS', state)
+        ask_price = self.get_best_ask('ORCHIDS', state)
 
         observations = state.observations
         conversion_observations = observations.conversionObservations
         orchid_observations = conversion_observations['ORCHIDS']
 
-        bid = orchid_observations.bidPrice
-        print(bid)
+        bid_price_south = orchid_observations.bidPrice
+        ask_price_south = orchid_observations.askPrice
+        transport_fees = orchid_observations.transportFees
+        export_tariff = orchid_observations.exportTariff
+        import_tariff = orchid_observations.importTariff
+        sunlight = orchid_observations.sunlight
+        humidity = orchid_observations.humidity
   
         return orders
     
