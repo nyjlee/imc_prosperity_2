@@ -22,12 +22,13 @@ class Trader:
     POSITION_LIMITS = {
         'AMETHYSTS': 20,
         'STARFRUIT': 20,
-        'ORCHIDS': 20,
+        'ORCHIDS': 100,
     }
 
     prices_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": []}
     mid_prices_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": []}
-    diff_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": []}
+    mid_p_diff_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": []}
+    p_diff_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": []}
     errors_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": []}
     forecasted_diff_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": []}
 
@@ -41,7 +42,7 @@ class Trader:
             self.ema_prices[product] = None
         self.ema_param = 0.
 
-        self.window_size = 81
+        self.window_size = 21
 
         self.current_pnl = dict()
         self.qt_traded = dict()
@@ -157,15 +158,15 @@ class Trader:
                 while len(self.mid_prices_history[symbol]) > self.window_size:
                     self.mid_prices_history[symbol].pop(0)
 
-    def update_diff_history(self, p_history):
+    def update_diff_history(self, diff_history, p_history):
         for symbol in self.PRODUCTS:
             if len(p_history[symbol]) >=2:
                 diff = p_history[symbol][-1] - p_history[symbol][-2]
                 
-                self.diff_history[symbol].append(diff)
+                diff_history[symbol].append(diff)
 
-            while len(self.diff_history[symbol]) > 10:
-                    self.diff_history[symbol].pop(0)
+            while len(diff_history[symbol]) > 8:
+                diff_history[symbol].pop(0)
 
 
     def update_ema_prices(self, state : TradingState):
@@ -341,23 +342,23 @@ class Trader:
         bid_volume = self.POSITION_LIMITS['STARFRUIT'] - position_starfruit
         ask_volume = - self.POSITION_LIMITS['STARFRUIT'] - position_starfruit
 
-        best_bid = self.get_best_bid('STARFRUIT', state)
-        best_ask = self.get_best_ask('STARFRUIT', state)
+        best_bid, best_bid_amount = self.get_best_bid('STARFRUIT', state)
+        best_ask, best_ask_amount = self.get_best_ask('STARFRUIT', state)
         mid_price = self.get_mid_price('STARFRUIT', state)
         spread = (best_ask - best_bid) / 2
         last_price = self.get_last_price('STARFRUIT', state.own_trades, state.market_trades)
 
 
-        if len(self.diff_history['STARFRUIT']) >= 6:
-            AR_L1 = self.diff_history['STARFRUIT'][-1]
-            AR_L2 = self.diff_history['STARFRUIT'][-2]
-            AR_L3 = self.diff_history['STARFRUIT'][-3]
-            AR_L4 = self.diff_history['STARFRUIT'][-4]
-            AR_L5 = self.diff_history['STARFRUIT'][-5]
-            AR_L6 = self.diff_history['STARFRUIT'][-6]
+        if len(self.mid_p_diff_history['STARFRUIT']) >= 6:
+            AR_L1 = self.mid_p_diff_history['STARFRUIT'][-1]
+            AR_L2 = self.mid_p_diff_history['STARFRUIT'][-2]
+            AR_L3 = self.mid_p_diff_history['STARFRUIT'][-3]
+            AR_L4 = self.mid_p_diff_history['STARFRUIT'][-4]
+            AR_L5 = self.mid_p_diff_history['STARFRUIT'][-5]
+            AR_L6 = self.mid_p_diff_history['STARFRUIT'][-6]
         
         if len(self.forecasted_diff_history['STARFRUIT']) > 0:
-            forecasted_error = self.forecasted_diff_history['STARFRUIT'][-1] - self.diff_history['STARFRUIT'][-1]
+            forecasted_error = self.forecasted_diff_history['STARFRUIT'][-1] - self.mid_p_diff_history['STARFRUIT'][-1]
             self.errors_history['STARFRUIT'].append(forecasted_error)
 
         if len(self.errors_history['STARFRUIT']) < 2:
@@ -413,8 +414,16 @@ class Trader:
         orders = []
     
         position_orchids = self.get_position('ORCHIDS', state)
-        bid_price = self.get_best_bid('ORCHIDS', state)
-        ask_price = self.get_best_ask('ORCHIDS', state)
+
+        bid_volume = self.POSITION_LIMITS['ORCHIDS'] - position_orchids
+        ask_volume = - self.POSITION_LIMITS['ORCHIDS'] - position_orchids
+
+        best_bid, best_bid_amount = self.get_best_bid('ORCHIDS', state)
+        best_ask, best_ask_amount  = self.get_best_ask('ORCHIDS', state)
+
+        mid_price = self.get_mid_price('ORCHIDS', state)
+
+        spread = (best_ask - best_bid) / 2
 
         observations = state.observations
         conversion_observations = observations.conversionObservations
@@ -427,10 +436,117 @@ class Trader:
         import_tariff = orchid_observations.importTariff
         sunlight = orchid_observations.sunlight
         humidity = orchid_observations.humidity
-  
+
+        if len(self.mid_p_diff_history['ORCHIDS']) >= 6:
+            AR_L1 = self.mid_p_diff_history['ORCHIDS'][-1]
+            AR_L2 = self.mid_p_diff_history['ORCHIDS'][-2]
+            AR_L3 = self.mid_p_diff_history['ORCHIDS'][-3]
+            AR_L4 = self.mid_p_diff_history['ORCHIDS'][-4]
+            AR_L5 = self.mid_p_diff_history['ORCHIDS'][-5]
+            AR_L6 = self.mid_p_diff_history['ORCHIDS'][-6]
+        else:
+            return orders
+        
+        if len(self.forecasted_diff_history['ORCHIDS']) > 0:
+            forecasted_error = self.forecasted_diff_history['ORCHIDS'][-1] - self.p_diff_history['ORCHIDS'][-1]
+            self.errors_history['ORCHIDS'].append(forecasted_error)
+
+        if len(self.errors_history['ORCHIDS']) < 2:
+            #use this!
+            self.errors_history['ORCHIDS'].extend([-0.021682, -2.008885, 0.981433])
+    
+        else:
+            MA_L1 = self.errors_history['ORCHIDS'][-1]
+            MA_L2 = self.errors_history['ORCHIDS'][-2]
+            MA_L3 = self.errors_history['ORCHIDS'][-3]
+
+        forecasted_diff = (AR_L1 * 0.0003) + (AR_L2 * -0.0036) + (AR_L3 * 0.0011) + (AR_L4 * -0.0039)
+        + (AR_L5 * -0.0062) + (AR_L6 * -0.0020)+ (MA_L1 *  0.0003) + (MA_L2 * -0.0036) + (MA_L3 * 0.0011)
+
+        last_price = self.get_last_price('ORCHIDS', state.own_trades, state.market_trades)
+
+        self.forecasted_diff_history['ORCHIDS'].append(forecasted_diff)
+
+        forecasted_price = mid_price + forecasted_diff
+
+        print('Last Price', last_price)  
+        print('Forecast:', forecasted_price)
+
+        if forecasted_price > best_bid+1:
+            orders.append(Order('ORCHIDS', math.floor(best_bid+1), bid_volume))
+
+            #orders.append(Order('ORCHIDS', math.floor(forecasted_price+spread/2), int(math.floor(ask_volume/2))))
+            #orders.append(Order('ORCHIDS', math.floor(forecasted_price+spread/3), int(math.ceil(ask_volume/2))))
+        elif forecasted_price < best_ask-1:
+            orders.append(Order('ORCHIDS', math.floor(best_ask-1), ask_volume))
+
+            #orders.append(Order('ORCHIDS', math.ceil(forecasted_price-spread/2), int(math.floor(bid_volume/2))))
+            #orders.append(Order('ORCHIDS', math.ceil(forecasted_price-spread/3), int(math.ceil(bid_volume/2))))
+
         return orders
     
+    def orchids_strategy2(self, state : TradingState) -> List[Order]:
+        """
+        Returns a list of orders with trades of orchids.
+        """
 
+        orders = []
+    
+        position_orchids = self.get_position('ORCHIDS', state)
+
+        bid_volume = self.POSITION_LIMITS['ORCHIDS'] - position_orchids
+        ask_volume = - self.POSITION_LIMITS['ORCHIDS'] - position_orchids
+
+        best_bid, best_bid_amount = self.get_best_bid('ORCHIDS', state)
+        best_ask, best_ask_amount  = self.get_best_ask('ORCHIDS', state)
+
+        mid_price = self.get_mid_price('ORCHIDS', state)
+
+        spread = (best_ask - best_bid) / 2
+
+        observations = state.observations
+        conversion_observations = observations.conversionObservations
+        orchid_observations = conversion_observations['ORCHIDS']
+
+        bid_price_south = orchid_observations.bidPrice
+        ask_price_south = orchid_observations.askPrice
+        transport_fees = orchid_observations.transportFees
+        export_tariff = orchid_observations.exportTariff
+        import_tariff = orchid_observations.importTariff
+        sunlight = orchid_observations.sunlight
+        humidity = orchid_observations.humidity
+
+        buy_price_south = ask_price_south + transport_fees + import_tariff
+        sell_price_south = bid_price_south - transport_fees - export_tariff
+
+        expected_profit_buying = 0
+        expected_profit_selling = 0
+
+        if position_orchids != 0:
+            conversion = position_orchids
+        else:
+            conversion = 0
+
+        if best_ask < sell_price_south:
+            #orders.append(Order('ORCHIDS', math.floor(best_ask), bid_volume))
+            expected_profit_buying = sell_price_south - best_ask
+        
+        if best_bid > buy_price_south:
+            #orders.append(Order('ORCHIDS', math.floor(best_bid), ask_volume))
+            expected_profit_selling = best_bid - buy_price_south
+
+        if expected_profit_buying > 5 and expected_profit_buying > expected_profit_selling:
+            orders.append(Order('ORCHIDS', math.floor(best_ask), bid_volume))
+
+        if expected_profit_selling > 5 and expected_profit_selling > expected_profit_buying:
+            orders.append(Order('ORCHIDS', math.floor(best_bid), ask_volume))
+
+
+
+
+
+        return orders, conversion
+    
 
     def run(self, state: TradingState) -> Dict[str, List[Order]]:
         """
@@ -446,7 +562,8 @@ class Trader:
         self.update_prices_history(state.own_trades, state.market_trades)
         self.update_mid_prices_history(state)
         #self.update_diff_history(self.mid_prices_history)
-        self.update_diff_history(self.mid_prices_history)
+        self.update_diff_history(self.mid_p_diff_history, self.mid_prices_history)
+        self.update_diff_history(self.p_diff_history, self.prices_history)
         #print(self.prices_history)
 
         
@@ -461,7 +578,7 @@ class Trader:
                 else:
                     self.current_pnl[product] += trade.quantity * trade.price
 
-        """
+        
         final_pnl = 0
         for product in state.order_depths.keys():
             product_pnl = 0
@@ -489,7 +606,7 @@ class Trader:
                 self.forecasted_diff_history[product].pop(0)
             while len(self.errors_history[product]) > 10:
                 self.errors_history[product].pop(0)
-        """   
+        
 
 
         # AMETHYSTS STRATEGY
@@ -507,17 +624,19 @@ class Trader:
         except Exception as e:
             print("Error in STARFRUIT strategy")
             print(e)
+        
         """
-
         # ORCHIDS STRATEGY
         try:
-            result['ORCHIDS'] = self.orchids_strategy(state)
+            result['ORCHIDS'] = self.orchids_strategy2(state)[0]
         except Exception as e:
             print("Error in ORCHIDS strategy")
             print(e)
-                
+        
+             
         traderData = "SAMPLE" 
         
 		# Sample conversion request. Check more details below. 
-        conversions = 0
+        conversions = self.orchids_strategy2(state)[1]
+
         return result, conversions, traderData

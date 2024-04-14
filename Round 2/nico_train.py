@@ -4,6 +4,11 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
+from pmdarima import auto_arima
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa.stattools import adfuller
+from statsmodels.tsa.api import VAR
+
 import os
 
 script_dir = os.path.dirname(__file__)
@@ -49,6 +54,56 @@ def plot_prices(df):
 
     print('Max', df['ORCHIDS'].max())
     print('Min', df['ORCHIDS'].min())
+
+
+# plot_prices(orchids_df)
+
+"""
+orchids_df = (orchids_df['ORCHIDS'])
+
+result = adfuller(orchids_df)
+
+print('ADF Statistic: %f' % result[0])
+print('p-value: %f' % result[1])
+print('Critical Values:')
+for key, value in result[4].items():
+    print('\t%s: %.3f' % (key, value))
+
+
+model = ARIMA(orchids_df, order=(6,1,3))
+model_fit = model.fit()
+print(model_fit.summary())
+
+# Get the in-sample residuals
+residuals = model_fit.resid
+initial_errors = residuals[-2:] 
+print(initial_errors)
+"""
+
+
+orchids_df = orchids_df.iloc[::100, :]
+print(orchids_df.head())
+
+orchids_df = orchids_df.reset_index(drop=True)
+print(orchids_df.head())
+
+
+def check_stationarity(series, name):
+    result = adfuller(series, autolag='AIC')
+    print(f'Results for {name}:')
+    print('ADF Statistic: %f' % result[0])
+    print('p-value: %f' % result[1])
+    print('Critical Values:')
+    for key, value in result[4].items():
+        print('\t%s: %.3f' % (key, value))
+    if result[1] > 0.05:
+        print(f"{name} is not stationary")
+    else:
+        print(f"{name} is stationary")
+
+# Check each variable
+for column in ['ORCHIDS', 'SUNLIGHT', 'HUMIDITY']:
+    check_stationarity(orchids_df[column], column)
 
 
 plot_prices(orchids_df)
