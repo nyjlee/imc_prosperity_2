@@ -523,7 +523,7 @@ class Trader:
         expected_profit_selling = 0
 
         if position_orchids != 0:
-            conversion = position_orchids
+            conversion = -position_orchids
         else:
             conversion = 0
 
@@ -535,10 +535,10 @@ class Trader:
             #orders.append(Order('ORCHIDS', math.floor(best_bid), ask_volume))
             expected_profit_selling = best_bid - buy_price_south
 
-        if expected_profit_buying > 5 and expected_profit_buying > expected_profit_selling:
+        if expected_profit_buying > 0 and expected_profit_buying > expected_profit_selling:
             orders.append(Order('ORCHIDS', math.floor(best_ask), bid_volume))
 
-        if expected_profit_selling > 5 and expected_profit_selling > expected_profit_buying:
+        if expected_profit_selling > 0 and expected_profit_selling > expected_profit_buying:
             orders.append(Order('ORCHIDS', math.floor(best_bid), ask_volume))
 
 
