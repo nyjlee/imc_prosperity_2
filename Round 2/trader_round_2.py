@@ -34,6 +34,8 @@ class Trader:
 
     current_signal = {"AMETHYSTS": "", "STARFRUIT": "None", "ORCHIDS": "None"}
 
+    export_tariffs = {"Min": 1000, "Max": 0, "Second Max": 0}
+
 
     def __init__(self) -> None:
 
@@ -98,6 +100,44 @@ class Trader:
         best_ask, best_ask_amount = list(market_asks.items())[0]
 
         return best_ask, best_ask_amount
+
+    def get_bid2(self, product, state: TradingState):
+        market_bids = state.order_depths[product].buy_orders
+        if len(market_bids) == 2:
+            bid2, bid2_amount = list(market_bids.items())[1]
+        else:
+            bid2, bid2_amount = float('-inf'), 0
+
+        return bid2, bid2_amount
+    
+    def get_bid3(self, product, state: TradingState):
+        market_bids = state.order_depths[product].buy_orders
+        if len(market_bids) == 3:
+            bid3, bid3_amount = list(market_bids.items())[2]
+        else:
+            bid3, bid3_amount = float('-inf'), 0
+
+        return bid3, bid3_amount
+    
+    def get_ask2(self, product, state: TradingState):
+        market_asks = state.order_depths[product].sell_orders
+        #best_ask = min(market_asks)
+        if len(market_asks) == 2:
+            ask2, ask2_amount = list(market_asks.items())[1]
+        else:
+            ask2, ask2_amount = float('inf'), 0
+
+        return ask2, ask2_amount
+    
+    def get_ask3(self, product, state: TradingState):
+        market_asks = state.order_depths[product].sell_orders
+        #best_ask = min(market_asks)
+        if len(market_asks) == 2:
+            ask3, ask3_amount = list(market_asks.items())[2]
+        else:
+            ask3, ask3_amount = float('inf'), 0
+
+        return ask3, ask3_amount
     
     def get_mid_price(self, product, state : TradingState):
 
@@ -516,6 +556,16 @@ class Trader:
         sunlight = orchid_observations.sunlight
         humidity = orchid_observations.humidity
 
+        if export_tariff < self.export_tariffs['Min']:
+            self.export_tariffs['Min'] = export_tariff
+        if export_tariff > self.export_tariffs['Max']:
+            # Update Second Max before updating Max
+            self.export_tariffs['Second Max'] = self.export_tariffs['Max']
+            self.export_tariffs['Max'] = export_tariff
+        elif export_tariff > self.export_tariffs['Second Max'] and export_tariff != self.export_tariffs['Max']:
+            # Update Second Max if it's not the current Max and greater than the current Second Max
+            self.export_tariffs['Second Max'] = export_tariff
+
         buy_price_south = ask_price_south + transport_fees + import_tariff
         sell_price_south = bid_price_south - transport_fees - export_tariff
 
@@ -547,6 +597,90 @@ class Trader:
 
         return orders, conversion
     
+    def orchids_strategy3(self, state : TradingState) -> List[Order]:
+        """
+        Returns a list of orders with trades of orchids.
+        """
+
+        orders = []
+    
+        position_orchids = self.get_position('ORCHIDS', state)
+
+        bid_volume = self.POSITION_LIMITS['ORCHIDS'] - position_orchids
+        ask_volume = - self.POSITION_LIMITS['ORCHIDS'] - position_orchids
+
+        best_bid, best_bid_amount = self.get_best_bid('ORCHIDS', state)
+        best_ask, best_ask_amount  = self.get_best_ask('ORCHIDS', state)
+
+        bid2, bid2_amount = self.get_bid2('ORCHIDS', state)
+        ask2, ask2_amount  = self.get_ask2('ORCHIDS', state)
+
+        bid3, bid3_amount = self.get_bid3('ORCHIDS', state)
+        ask3, ask3_amount  = self.get_ask3('ORCHIDS', state)
+
+        mid_price = self.get_mid_price('ORCHIDS', state)
+
+        spread = (best_ask - best_bid) / 2
+
+        observations = state.observations
+        conversion_observations = observations.conversionObservations
+        orchid_observations = conversion_observations['ORCHIDS']
+
+        bid_price_south = orchid_observations.bidPrice
+        ask_price_south = orchid_observations.askPrice
+        transport_fees = orchid_observations.transportFees
+        export_tariff = orchid_observations.exportTariff
+        import_tariff = orchid_observations.importTariff
+        sunlight = orchid_observations.sunlight
+        humidity = orchid_observations.humidity
+
+        buy_price_south = ask_price_south + transport_fees + import_tariff
+        sell_price_south = bid_price_south - transport_fees - export_tariff
+
+        expected_profit_buying = 0
+        expected_profit_selling = 0
+        expected_profit_buying_2 = 0
+        expected_profit_selling_2 = 0
+
+
+        if position_orchids != 0:
+            conversion = -position_orchids
+        else:
+            conversion = 0
+
+        if best_ask < sell_price_south:
+            expected_profit_buying = sell_price_south - best_ask
+        
+        if best_bid > buy_price_south:
+            expected_profit_selling = best_bid - buy_price_south
+
+        if ask2 < sell_price_south and ask2_amount != 0:
+            expected_profit_buying_2 = sell_price_south - ask2
+        
+        if bid2 > buy_price_south and bid2_amount != 0:
+            expected_profit_selling_2 = bid2 - buy_price_south
+        
+        if ask3 < sell_price_south and ask3_amount != 0:
+            expected_profit_buying_3 = sell_price_south - ask3
+        
+        if bid3 > buy_price_south and bid3_amount != 0:
+            expected_profit_selling_3 = bid3 - buy_price_south
+
+        if expected_profit_buying_2 > 0 and expected_profit_buying_2 > expected_profit_selling_2:
+            orders.append(Order('ORCHIDS', math.floor(best_ask),  min(ask2_amount, bid_volume)))
+
+        if expected_profit_selling_2 > 0 and expected_profit_selling_2 > expected_profit_buying_2:
+            orders.append(Order('ORCHIDS', math.floor(best_bid), max(ask_volume, -bid2_amount)))
+
+        if expected_profit_buying > 0 and expected_profit_buying > expected_profit_selling:
+            orders.append(Order('ORCHIDS', math.floor(best_ask), bid_volume - min(ask2_amount, bid_volume)))
+
+        if expected_profit_selling > 0 and expected_profit_selling > expected_profit_buying:
+            orders.append(Order('ORCHIDS', math.floor(best_bid), ask_volume - max(ask_volume, -bid2_amount)))
+
+        return orders, conversion
+    
+
 
     def run(self, state: TradingState) -> Dict[str, List[Order]]:
         """
