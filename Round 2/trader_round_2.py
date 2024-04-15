@@ -573,9 +573,15 @@ class Trader:
             orders.append(Order('ORCHIDS', best_bid, ask_volume))
             return orders, conversion
         
-        if self.current_signal['ORCHIDS'] == 'Export Tariff Short' and position_orchids < 0 and export_tariff == self.export_tariffs['Min']:
-            orders.append(Order('ORCHIDS', best_ask, -position_orchids))    
+        if self.current_signal['ORCHIDS'] != 'Export Tariff Short' and position_orchids < 0 and export_tariff == self.export_tariffs['Min']:
+            orders.append(Order('ORCHIDS', best_ask, -position_orchids))
+            self.current_signal['ORCHIDS'] = 'Close Short'    
             return orders, conversion
+        
+        if self.current_signal['ORCHIDS'] == 'Export Tariff Short':
+            orders.append(Order('ORCHIDS', best_bid, ask_volume))
+            return orders, conversion
+
 
         buy_price_south = ask_price_south + transport_fees + import_tariff
         sell_price_south = bid_price_south - transport_fees - export_tariff
