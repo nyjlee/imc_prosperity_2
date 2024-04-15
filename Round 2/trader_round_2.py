@@ -556,15 +556,26 @@ class Trader:
         sunlight = orchid_observations.sunlight
         humidity = orchid_observations.humidity
 
+        conversion = 0
+
+        #### KEEP TRACK OF MIN, MAX AND SECOND MAX ####
         if export_tariff < self.export_tariffs['Min']:
             self.export_tariffs['Min'] = export_tariff
         if export_tariff > self.export_tariffs['Max']:
-            # Update Second Max before updating Max
             self.export_tariffs['Second Max'] = self.export_tariffs['Max']
             self.export_tariffs['Max'] = export_tariff
         elif export_tariff > self.export_tariffs['Second Max'] and export_tariff != self.export_tariffs['Max']:
-            # Update Second Max if it's not the current Max and greater than the current Second Max
             self.export_tariffs['Second Max'] = export_tariff
+        
+        #### STRATEGY BASED ON EXPORT TARIFF ####
+        if export_tariff > 1.6 * self.export_tariffs['Min'] and export_tariff < self.export_tariffs['Max'] and export_tariff == self.export_tariffs['Second Max']:
+            self.current_signal['ORCHIDS'] = 'Export Tariff Short'
+            orders.append(Order('ORCHIDS', best_bid, ask_volume))
+            return orders, conversion
+        
+        if self.current_signal['ORCHIDS'] == 'Export Tariff Short' and position_orchids < 0 and export_tariff == self.export_tariffs['Min']:
+            orders.append(Order('ORCHIDS', best_ask, -position_orchids))    
+            return orders, conversion
 
         buy_price_south = ask_price_south + transport_fees + import_tariff
         sell_price_south = bid_price_south - transport_fees - export_tariff
@@ -590,10 +601,6 @@ class Trader:
 
         if expected_profit_selling > 0 and expected_profit_selling > expected_profit_buying:
             orders.append(Order('ORCHIDS', math.floor(best_bid), ask_volume))
-
-
-
-
 
         return orders, conversion
     
