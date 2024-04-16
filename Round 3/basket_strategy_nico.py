@@ -36,6 +36,8 @@ class Trader:
 
     export_tariffs = {"Min": 1000, "Max": 0, "Second Max": 0}
 
+    spreads_basket = []
+
 
     def __init__(self) -> None:
 
@@ -292,14 +294,53 @@ class Trader:
         """
         Buying and Selling based on last trade price vs mean price (ceiling floor version)
         """
-        orders = []
+        basket_orders = []
+        chocolates_orders = []
+        strawberries_orders = []
+        roses_orders = []
+
+        #### POSITIONS ####
         position_basket = self.get_position('GIFT_BASKET', state)
-        position_chocolates = self.get_position('CHOCOLATES', state)
+        position_chocolates = self.get_position('CHOCOLATE', state)
         position_strawberries = self.get_position('STRAWBERRIES', state)
         position_roses = self.get_position('ROSES', state)
 
+        #### MID PRICES ####
+        basket_mid_price = self.get_mid_price('GIFT_BASKET', state)
+        chocolates_mid_price = self.get_mid_price('CHOCOLATE', state)
+        strawberries_mid_price = self.get_mid_price('STRAWBERRIES', state)
+        roses_mid_price = self.get_mid_price('ROSES', state)
 
-        return orders
+        #### BIDS, ASKS, VOLUMES ####
+        basket_bid, basket_bid_vol = self.get_best_bid('GIFT_BASKET', state)
+        basket_ask, basket_ask_vol = self.get_best_ask('GIFT_BASKET', state)
+        chocolates_bid, chocolates_bid_vol = self.get_best_bid('CHOCOLATE', state)
+        chocolates_ask, chocolates_ask_vol = self.get_best_ask('CHOCOLATE', state)
+        strawberries_bid, strawberries_bid_vol = self.get_best_bid('STRAWBERRIES', state)
+        strawberries_ask, strawberries_ask_vol = self.get_best_ask('STRAWBERRIES', state)
+        roses_bid, roses_bid_vol = self.get_best_bid('ROSES', state)
+        roses_ask, roses_ask_vol = self.get_best_ask('ROSES', state)
+
+        nav = 4 * chocolates_mid_price + 6 *strawberries_mid_price + roses_mid_price
+        spread = basket_mid_price - nav
+
+        if len(self.spreads_basket) == 50:
+            mean = self.spreads_basket.mean()
+            std = self.spreads_basket.std()
+            z_score = (spread - mean) / std
+
+            
+
+        self.spreads_basket.append(spread)
+        while len(self.spreads_basket) > 50:
+            self.spreads_basket.pop(0)
+
+        
+
+
+
+
+        return basket_orders, chocolates_orders, strawberries_orders,roses_orders
     
 
     def run(self, state: TradingState) -> Dict[str, List[Order]]:

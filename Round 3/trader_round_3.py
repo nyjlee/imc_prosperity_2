@@ -599,30 +599,18 @@ class Trader:
         expected_profit_selling_3 = 0
         expected_profit_buying_2 = 0
         expected_profit_selling_2 = 0
-        expected_profit_buying_1 = 0
-        expected_profit_selling_1 = 0
+
 
         if position_orchids != 0:
             conversion = -position_orchids
         else:
             conversion = 0
 
-        if best_bid+4 > buy_price_south:
-            #orders.append(Order('ORCHIDS', math.floor(best_bid), ask_volume))
-            expected_profit_selling_1 = best_bid+4 - buy_price_south
-        if best_ask-4 < sell_price_south:
-            #orders.append(Order('ORCHIDS', math.floor(best_ask), bid_volume))
-            expected_profit_buying_1 = sell_price_south - best_ask-4
-        
-        #if expected_profit_buying_1 > 0 and expected_profit_buying_1 > expected_profit_selling_1:
-            #orders.append(Order('ORCHIDS', math.floor(best_ask-4), math.floor(2*bid_volume)))
-        #if expected_profit_selling_1 > 0 and expected_profit_selling_1 > expected_profit_buying_1:
-            #orders.append(Order('ORCHIDS', math.floor(best_bid+4), math.floor(2*ask_volume)))
 
         if best_bid+2 > buy_price_south:
             #orders.append(Order('ORCHIDS', math.floor(best_bid), ask_volume))
             expected_profit_selling_2 = best_bid+2 - buy_price_south
-        if best_ask-4 < sell_price_south:
+        if best_ask-2 < sell_price_south:
             #orders.append(Order('ORCHIDS', math.floor(best_ask), bid_volume))
             expected_profit_buying_2 = sell_price_south - best_ask-2
         
