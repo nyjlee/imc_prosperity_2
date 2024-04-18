@@ -809,7 +809,6 @@ class Trader:
 
         return orders, conversion
     
-<<<<<<< HEAD:Round 3/ROUND_3_FINAL.py
     def basket_strategy(self, state : TradingState) -> List[Order]:
         """
         Buying and Selling based on last trade price vs mean price (ceiling floor version)
@@ -1094,7 +1093,7 @@ class Trader:
 
 
         return basket_orders, chocolates_orders, strawberries_orders, roses_orders
-=======
+
     def orchids_strategy4(self, state: TradingState) -> List[Order]:
         """
         Returns a list of orders with trades of orchids.
@@ -1128,7 +1127,6 @@ class Trader:
                     orders.append(Order('ORCHIDS', math.floor(best_ask3), volume=math.ceil(ask_volume/4)))
         return orders
         
->>>>>>> a205985594876e2762499d6ca74e022439ecaa6f:Round 3/trader_round_3.py
 
     def run(self, state: TradingState) -> Dict[str, List[Order]]:
         """
