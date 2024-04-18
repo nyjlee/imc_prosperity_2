@@ -45,16 +45,9 @@ class Trader:
     forecasted_diff_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": [], "GIFT_BASKET": [], "STRAWBERRIES": [], 'CHOCOLATE': [], "ROSES": []}
 
 
-    timestamp_min10 =  1400
-    conditions_orchid_history = {"bid_price_south": [], "ask_price_south": [], 
-                                 "transport_fees": [], "export_tariff": [], 
-                                 "import_tariff": [], "sunlight": [], "humidity": []}
-    sunlight_history_min10 = []
-    track_sunlight = True
     current_signal = {"AMETHYSTS": "", "STARFRUIT": "None", "ORCHIDS": "None"}
+
     export_tariffs = {"Min": 1000, "Max": 0, "Second Max": 0}
-    production_orchid = 1
-    production_orchid_history = []
 
     spreads_basket = []
     spreads_roses = []
@@ -322,61 +315,6 @@ class Trader:
             print(total_volume)
             return 0
     
-    def get_conditions_orchid(self, state: TradingState):
-        observations = state.observations
-        conversion_observations = observations.conversionObservations
-        orchid_observations = conversion_observations['ORCHIDS']
-
-        bid_price_south = orchid_observations.bidPrice
-        ask_price_south = orchid_observations.askPrice
-        transport_fees = orchid_observations.transportFees
-        export_tariff = orchid_observations.exportTariff
-        import_tariff = orchid_observations.importTariff
-        sunlight = orchid_observations.sunlight
-        humidity = orchid_observations.humidity
-
-        return bid_price_south, ask_price_south, transport_fees, export_tariff, import_tariff, sunlight, humidity
-
-    def update_conditions_orchid(self, state: TradingState):
-        bid_price_south, ask_price_south, transport_fees, export_tariff, import_tariff, sunlight, humidity = self.get_conditions_orchid(state)
-
-        self.conditions_orchid_history['bid_price_south'].append(bid_price_south)
-        self.conditions_orchid_history['ask_price_south'].append(ask_price_south)
-        self.conditions_orchid_history['transport_fees'].append(transport_fees)
-        self.conditions_orchid_history['export_tariff'].append(export_tariff)
-        self.conditions_orchid_history['import_tariff'].append(import_tariff)
-        self.conditions_orchid_history['sunlight'].append(sunlight)
-        self.conditions_orchid_history['humidity'].append(humidity)
-
-        for i in self.conditions_orchid_history:
-            while len(self.conditions_orchid_history[i]) > 420:
-                self.conditions_orchid_history[i].pop(0)
-
-    def sunlight_tracker(self, state: TradingState):
-        if self.track_sunlight:
-            if state.timestamp > 0 and state.timestamp % self.timestamp_min10 == 0:
-                self.sunlight_history_min10.append(np.mean(self.conditions_orchid_history['sunlight'][-1400:]))
-            if np.sum(self.sunlight_history_min10) > 105000:
-                self.track_sunlight = False
-            else:
-                self.production_orchid -= 0.04
-
-    def update_production_history(self, state: TradingState):
-        current_humidity = self.get_conditions_orchid(state)[6]
-        current_production = self.production_orchid
-        if current_humidity > 80:
-            humidity_decrease = 0.02 * (current_humidity - 80) // 5
-            current_production -= humidity_decrease
-        elif current_humidity < 60:
-            humidity_decrease = 0.02 * (60 - current_humidity) // 5
-            current_production -=  humidity_decrease
-
-        self.production_orchid_history.append(current_production)
-
-        if len(self.production_orchid_history) > 200:
-            self.production_orchid_history.pop(0)
-
-
     def amethysts_strategy(self, state : TradingState) -> List[Order]:
         """
         Buying and Selling based on last trade price vs mean price (ceiling floor version)
@@ -1094,40 +1032,6 @@ class Trader:
 
         return basket_orders, chocolates_orders, strawberries_orders, roses_orders
 
-    def orchids_strategy4(self, state: TradingState) -> List[Order]:
-        """
-        Returns a list of orders with trades of orchids.
-        """
-
-        orders = []
-        position_orchids = self.get_position('ORCHIDS', state)
-        bid_volume = self.POSITION_LIMITS['ORCHIDS'] - position_orchids
-        ask_volume = - self.POSITION_LIMITS['ORCHIDS'] - position_orchids
-        best_bid1, best_bid2, best_bid3 = self.get_best_bid('ORCHIDS', state), self.get_bid2('ORCHIDS', state)[0], self.get_bid3('ORCHIDS', state)[0]
-        best_ask1, best_ask2, best_ask3 = self.get_best_ask('ORCHIDS', state), self.get_ask2('ORCHIDS', state)[0], self.get_ask3('ORCHIDS', state)[0]
-
-        if len(self.production_orchid_history) < 50:
-            orders.append(Order('ORCHIDS', math.floor(best_bid1), volume=math.floor(bid_volume/4)))
-            return orders
-        
-        first_derivative = np.diff(self.production_orchid_history[-50:], n=1)
-        second_derivative = np.diff(first_derivative, n=1)
-
-        threshold = 0.5
-        if len(second_derivative) > 0 and abs(second_derivative[-1]) <= threshold:
-            if second_derivative[-1] >= 0:
-                if bid_volume > 0:
-                    orders.append(Order('ORCHIDS', math.floor(best_bid1), volume=math.floor(bid_volume/2)))
-                    orders.append(Order('ORCHIDS', math.floor(best_bid2), volume=math.ceil(bid_volume/4)))
-                    orders.append(Order('ORCHIDS', math.floor(best_bid3), volume=math.ceil(bid_volume/4)))
-            else:
-                if ask_volume < 0:
-                    orders.append(Order('ORCHIDS', math.floor(best_ask1), volume=math.floor(ask_volume/2)))
-                    orders.append(Order('ORCHIDS', math.floor(best_ask2), volume=math.ceil(ask_volume/4)))
-                    orders.append(Order('ORCHIDS', math.floor(best_ask3), volume=math.ceil(ask_volume/4)))
-        return orders
-        
-
     def run(self, state: TradingState) -> Dict[str, List[Order]]:
         """
         Only method required. It takes all buy and sell orders for all symbols as an input,
@@ -1145,10 +1049,6 @@ class Trader:
         self.update_diff_history(self.mid_p_diff_history, self.mid_prices_history)
         self.update_diff_history(self.p_diff_history, self.prices_history)
         #print(self.prices_history)
-
-        self.update_conditions_orchid(state)
-        self.sunlight_tracker(state)
-        self.update_production_history(state)
 
         """
         for product in state.own_trades.keys():
@@ -1192,7 +1092,7 @@ class Trader:
                 self.errors_history[product].pop(0)
         
 
-        """
+
         # AMETHYSTS STRATEGY
         
         try:
@@ -1201,22 +1101,22 @@ class Trader:
             print("Error in AMETHYSTS strategy")
             print(e)
         
-
+        
         # STARFRUIT STRATEGY
         try:
             result['STARFRUIT'] = self.starfruit_strategy(state)
         except Exception as e:
             print("Error in STARFRUIT strategy")
             print(e)
-        """
         
+        """
         # ORCHIDS STRATEGY
         try:
-            result['ORCHIDS'] = self.orchids_strategy3(state)[0]
+            result['ORCHIDS'] = self.orchids_strategy2(state)[0]
         except Exception as e:
             print("Error in ORCHIDS strategy")
             print(e)
-        
+        """
         
         # BASKET STRATEGY
         try:
@@ -1226,9 +1126,10 @@ class Trader:
             print(e)
         
         
+             
         traderData = "SAMPLE" 
         
 		# Sample conversion request. Check more details below. 
-        conversions = self.orchids_strategy3(state)[1]
+        conversions = self.orchids_strategy2(state)[1]
 
         return result, conversions, traderData
