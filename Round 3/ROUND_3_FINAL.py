@@ -3,7 +3,7 @@ from datamodel import OrderDepth, TradingState, Order, Symbol, Trade
 import math
 import pandas as pd
 import numpy as np
-
+import statistics
 
 class Trader:
 
@@ -11,30 +11,54 @@ class Trader:
     'AMETHYSTS',
     'STARFRUIT',
     'ORCHIDS',
+    'GIFT_BASKET',
+    'CHOCOLATE',
+    'STRAWBERRIES',
+    'ROSES'
     ]
 
     DEFAULT_PRICES = {
         'AMETHYSTS' : 10000,
         'STARFRUIT' : 5000,
         'ORCHIDS': 1000,
+        'GIFT_BASKET' : 70000,
+        'CHOCOLATE' : 8000,
+        'STRAWBERRIES': 4000,
+        'ROSES': 15000,
     }
 
     POSITION_LIMITS = {
         'AMETHYSTS': 20,
         'STARFRUIT': 20,
         'ORCHIDS': 100,
+        'GIFT_BASKET': 60,
+        'CHOCOLATE': 250,
+        'STRAWBERRIES': 350,
+        'ROSES': 60,
     }
 
-    prices_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": []}
-    mid_prices_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": []}
-    mid_p_diff_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": []}
-    p_diff_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": []}
-    errors_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": []}
-    forecasted_diff_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": []}
+    prices_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": [], "GIFT_BASKET": [], "STRAWBERRIES": [], 'CHOCOLATE': [], "ROSES": []}
+    mid_prices_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": [], "GIFT_BASKET": [], "STRAWBERRIES": [], 'CHOCOLATE': [], "ROSES": []}
+    mid_p_diff_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": [], "GIFT_BASKET": [], "STRAWBERRIES": [], 'CHOCOLATE': [], "ROSES": []}
+    p_diff_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": [], "GIFT_BASKET": [], "STRAWBERRIES": [], 'CHOCOLATE': [], "ROSES": []}
+    errors_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": [], "GIFT_BASKET": [], "STRAWBERRIES": [], 'CHOCOLATE': [], "ROSES": []}
+    forecasted_diff_history = {"AMETHYSTS": [], "STARFRUIT": [], "ORCHIDS": [], "GIFT_BASKET": [], "STRAWBERRIES": [], 'CHOCOLATE': [], "ROSES": []}
+
 
     current_signal = {"AMETHYSTS": "", "STARFRUIT": "None", "ORCHIDS": "None"}
 
     export_tariffs = {"Min": 1000, "Max": 0, "Second Max": 0}
+
+    spreads_basket = []
+    spreads_roses = []
+    spreads_chocolates = []
+
+    ratios_basket = []
+
+    etf_prices = []
+    etf_returns = []
+    nav_prices = []
+    nav_returns = []
 
 
     def __init__(self) -> None:
@@ -106,7 +130,8 @@ class Trader:
         if len(market_bids) == 2:
             bid2, bid2_amount = list(market_bids.items())[1]
         else:
-            bid2, bid2_amount = float('-inf'), 0
+            #bid2, bid2_amount = float('-inf'), 0
+            bid2, bid2_amount = 0, 0
 
         return bid2, bid2_amount
     
@@ -115,7 +140,8 @@ class Trader:
         if len(market_bids) == 3:
             bid3, bid3_amount = list(market_bids.items())[2]
         else:
-            bid3, bid3_amount = float('-inf'), 0
+            #bid3, bid3_amount = float('-inf'), 0
+            bid3, bid3_amount = 0, 0
 
         return bid3, bid3_amount
     
@@ -125,17 +151,19 @@ class Trader:
         if len(market_asks) == 2:
             ask2, ask2_amount = list(market_asks.items())[1]
         else:
-            ask2, ask2_amount = float('inf'), 0
+            #ask2, ask2_amount = float('inf'), 0
+            ask2, ask2_amount = 500000, 0
 
         return ask2, ask2_amount
     
     def get_ask3(self, product, state: TradingState):
         market_asks = state.order_depths[product].sell_orders
         #best_ask = min(market_asks)
-        if len(market_asks) == 2:
+        if len(market_asks) == 3:
             ask3, ask3_amount = list(market_asks.items())[2]
         else:
-            ask3, ask3_amount = float('inf'), 0
+            #ask3, ask3_amount = float('inf'), 0
+            ask3, ask3_amount = 500000, 0
 
         return ask3, ask3_amount
     
@@ -719,7 +747,290 @@ class Trader:
 
         return orders, conversion
     
+    def basket_strategy(self, state : TradingState) -> List[Order]:
+        """
+        Buying and Selling based on last trade price vs mean price (ceiling floor version)
+        """
+        basket_orders = []
+        chocolates_orders = []
+        strawberries_orders = []
+        roses_orders = []
 
+        #### POSITIONS ####
+        position_basket = self.get_position('GIFT_BASKET', state)
+        position_chocolates = self.get_position('CHOCOLATE', state)
+        position_strawberries = self.get_position('STRAWBERRIES', state)
+        position_roses = self.get_position('ROSES', state)
+
+        current_position_all = abs(position_basket) + abs(position_chocolates) + abs(position_strawberries) + abs(position_roses)
+
+        #### QUANTITIES WE ARE ALLOWED TO TRADE ####
+        buy_volume_basket = (self.POSITION_LIMITS['GIFT_BASKET'] - position_basket) 
+        sell_volume_basket = (- self.POSITION_LIMITS['GIFT_BASKET'] - position_basket) 
+        buy_volume_chocolates = (self.POSITION_LIMITS['CHOCOLATE'] - position_chocolates) 
+        sell_volume_chocolates = (- self.POSITION_LIMITS['CHOCOLATE'] - position_chocolates) 
+        buy_volume_strawberries = (self.POSITION_LIMITS['STRAWBERRIES'] - position_strawberries) 
+        sell_volume_strawberries = (- self.POSITION_LIMITS['STRAWBERRIES'] - position_strawberries) 
+        buy_volume_roses = (self.POSITION_LIMITS['ROSES'] - position_roses) 
+        sell_volume_roses= (- self.POSITION_LIMITS['ROSES'] - position_roses) 
+        
+        #### MID PRICES ####
+        basket_mid_price = self.get_mid_price('GIFT_BASKET', state)
+        chocolates_mid_price = self.get_mid_price('CHOCOLATE', state)
+        strawberries_mid_price = self.get_mid_price('STRAWBERRIES', state)
+        roses_mid_price = self.get_mid_price('ROSES', state)
+
+        #### BIDS, ASKS, VOLUMES ####
+        basket_bid, basket_bid_vol = self.get_best_bid('GIFT_BASKET', state)
+        basket_ask, basket_ask_vol = self.get_best_ask('GIFT_BASKET', state)
+        chocolates_bid, chocolates_bid_vol = self.get_best_bid('CHOCOLATE', state)
+        chocolates_ask, chocolates_ask_vol = self.get_best_ask('CHOCOLATE', state)
+        strawberries_bid, strawberries_bid_vol = self.get_best_bid('STRAWBERRIES', state)
+        strawberries_ask, strawberries_ask_vol = self.get_best_ask('STRAWBERRIES', state)
+        roses_bid, roses_bid_vol = self.get_best_bid('ROSES', state)
+        roses_ask, roses_ask_vol = self.get_best_ask('ROSES', state)
+
+        strawberries_book_spread  = strawberries_ask - strawberries_bid
+
+        #### SECOND BIDS AND ASKS ####
+        basket_bid_2, basket_bid_vol_2 = self.get_bid2('GIFT_BASKET', state)
+        basket_ask_2, basket_ask_vol_2 = self.get_ask2('GIFT_BASKET', state)
+        chocolates_bid_2, chocolates_bid_vol_2 = self.get_bid2('CHOCOLATE', state)
+        chocolates_ask_2, chocolates_ask_vol_2 = self.get_ask2('CHOCOLATE', state)
+        strawberries_bid_2, strawberries_bid_vol_2 = self.get_bid2('STRAWBERRIES', state)
+        strawberries_ask_2, strawberries_ask_vol_2 = self.get_ask2('STRAWBERRIES', state)
+        roses_bid_2, roses_bid_vol_2 = self.get_bid2('ROSES', state)
+        roses_ask_2, roses_ask_vol_2 = self.get_ask2('ROSES', state)
+
+
+        #### THIRD BIDS AND ASKS ####
+        basket_bid_3, basket_bid_vol_3 = self.get_bid3('GIFT_BASKET', state)
+        basket_ask_3, basket_ask_vol_3 = self.get_ask3('GIFT_BASKET', state)
+        chocolates_bid_3, chocolates_bid_vol_3 = self.get_bid3('CHOCOLATE', state)
+        chocolates_ask_3, chocolates_ask_vol_3 = self.get_ask3('CHOCOLATE', state)
+        strawberries_bid_3, strawberries_bid_vol_3 = self.get_bid3('STRAWBERRIES', state)
+        strawberries_ask_3, strawberries_ask_vol_3 = self.get_ask3('STRAWBERRIES', state)
+        roses_bid_3, roses_bid_vol_3 = self.get_bid3('ROSES', state)
+        roses_ask_3, roses_ask_vol_3 = self.get_ask3('ROSES', state)
+
+
+
+        nav = 4 * chocolates_mid_price + 6 *strawberries_mid_price + roses_mid_price
+        spread_basket = basket_mid_price - nav
+
+        spread_roses = roses_mid_price - 1.3427 * chocolates_mid_price
+
+        spread_chocolates = basket_mid_price - 5.7223 * chocolates_mid_price
+
+        self.spreads_basket.append(spread_basket)
+        self.spreads_roses.append(spread_roses)
+        self.spreads_chocolates.append(spread_chocolates)
+
+        if len(self.mid_p_diff_history['STRAWBERRIES']) >= 6:
+            AR_L1 = self.mid_p_diff_history['STRAWBERRIES'][-1]
+            AR_L2 = self.mid_p_diff_history['STRAWBERRIES'][-2]
+            AR_L3 = self.mid_p_diff_history['STRAWBERRIES'][-3]
+            AR_L4 = self.mid_p_diff_history['STRAWBERRIES'][-4]
+            AR_L5 = self.mid_p_diff_history['STRAWBERRIES'][-5]
+            AR_L6 = self.mid_p_diff_history['STRAWBERRIES'][-6]
+        
+        if len(self.forecasted_diff_history['STRAWBERRIES']) > 0:
+            forecasted_error = self.forecasted_diff_history['STRAWBERRIES'][-1] - self.mid_p_diff_history['STRAWBERRIES'][-1]
+            self.errors_history['STRAWBERRIES'].append(forecasted_error)
+
+        if len(self.errors_history['STRAWBERRIES']) < 2:
+            #use this!
+            self.errors_history['STRAWBERRIES'].extend([0.997266, 0.135121, 0.022820])
+
+        else:
+            MA_L1 = self.errors_history['STRAWBERRIES'][-1]
+            MA_L2 = self.errors_history['STRAWBERRIES'][-2]
+            MA_L3 = self.errors_history['STRAWBERRIES'][-3]
+        
+
+        #new data2
+        forecasted_diff = (AR_L1 * -0.2068) + (AR_L2 * 0.5171) + (AR_L3 * 0.2510) + (AR_L4 * 0.0342)
+        + (AR_L5 * -0.0014) + (AR_L6 * -0.0073)+ (MA_L1 * 0.0739) + (MA_L2 * -0.5473) + (MA_L3 * -0.1682)
+
+    
+        self.forecasted_diff_history['STRAWBERRIES'].append(forecasted_diff)
+
+        forecasted_price = strawberries_mid_price + forecasted_diff  
+
+        #play with diff comb
+        if forecasted_price > strawberries_bid+2:
+            strawberries_orders.append(Order('STRAWBERRIES', math.floor(strawberries_bid+1), buy_volume_strawberries))
+
+            strawberries_orders.append(Order('STRAWBERRIES', math.floor(forecasted_price+strawberries_book_spread/2), int(math.floor(sell_volume_strawberries/2))))
+            strawberries_orders.append(Order('STRAWBERRIES', math.floor(forecasted_price+strawberries_book_spread/3), int(math.ceil(sell_volume_strawberries/2))))
+        elif forecasted_price < strawberries_ask-2:
+            strawberries_orders.append(Order('STRAWBERRIES', math.floor(strawberries_ask-1), sell_volume_strawberries))
+
+            strawberries_orders.append(Order('STRAWBERRIES', math.ceil(forecasted_price-strawberries_book_spread/2), int(math.floor(buy_volume_strawberries/2))))
+            strawberries_orders.append(Order('STRAWBERRIES', math.ceil(forecasted_price-strawberries_book_spread/3), int(math.ceil(buy_volume_strawberries/2))))
+        
+
+        #if len(self.spreads_basket) == 150:
+        if len(self.spreads_basket) >= 200:
+            mean_basket = statistics.mean(self.spreads_basket)
+            std_basket = statistics.stdev(self.spreads_basket)
+            z_score_basket = (spread_basket - mean_basket) / std_basket
+
+            mean_roses = statistics.mean(self.spreads_roses)
+            std_roses = statistics.stdev(self.spreads_roses)
+            z_score_roses = (spread_roses - mean_roses) / std_roses
+
+            mean_chocolates = statistics.mean(self.spreads_chocolates)
+            std_chocolates = statistics.stdev(self.spreads_chocolates)
+            z_score_chocolates = (spread_chocolates - mean_chocolates) / std_chocolates
+
+            if z_score_basket > -0.5 and z_score_basket < 0.5 and position_basket != 0:
+                if position_basket > 0: #EXIT LONG POSITION
+                    position1 = math.ceil(position_basket/2)
+                    position2 = math.floor(position_basket/2)
+                    basket_orders.append(Order('GIFT_BASKET',  int(math.floor(self.ema_prices['GIFT_BASKET']+1)), -position1))
+                    basket_orders.append(Order('GIFT_BASKET',  int(math.floor(self.ema_prices['GIFT_BASKET']+2)), -position2))
+                    
+                elif position_basket < 0: #EXIT SHORT POSITION
+                    position1 = math.ceil(position_basket/2)
+                    position2 = math.floor(position_basket/2)
+                    basket_orders.append(Order('GIFT_BASKET',  int(math.floor(self.ema_prices['GIFT_BASKET']-1)), -position1))
+                    basket_orders.append(Order('GIFT_BASKET',  int(math.floor(self.ema_prices['GIFT_BASKET']-2)), -position2))
+
+            elif z_score_basket > 2: #BASKET OVER VALUED, SELL BASKET AND BUY INDIVIDUAL GOODS
+                #### SELLING BASKET AND BUYING INDIVIDUAL GOODS ####
+                qt_basket = min(abs(sell_volume_basket), basket_bid_vol+basket_bid_vol_2+basket_bid_vol_3) 
+                qt_chocolates = min(buy_volume_chocolates, abs(chocolates_ask_vol+chocolates_ask_vol_2+chocolates_ask_vol_3)) 
+                qt_strawberries = min(buy_volume_strawberries, abs(strawberries_ask_vol+strawberries_ask_vol_2+strawberries_ask_vol_3)) 
+                qt_roses = min(buy_volume_roses, abs(roses_ask_vol+roses_ask_vol_2+roses_ask_vol_3)) 
+
+                n_tradable = min(qt_basket, math.floor(qt_chocolates/4), math.floor(qt_strawberries/6), qt_roses)
+
+                if n_tradable >= 0:
+                    
+                    basket_orders.append(Order('GIFT_BASKET', basket_bid, - min(abs(sell_volume_basket), basket_bid_vol)))
+                    basket_orders.append(Order('GIFT_BASKET', basket_bid_2, - max(min(abs(sell_volume_basket)-basket_bid, basket_bid_vol_2), 0)))
+                    basket_orders.append(Order('GIFT_BASKET', basket_bid_3, - max(min(abs(sell_volume_basket)-basket_bid_vol-basket_bid_vol_2, basket_bid_vol_3), 0)))
+
+            elif z_score_basket < -2: #BASKET UNDER VALUED, BUY BASKET AND SELL INDIVIDUAL GOODS
+                #### BUYING BASKET AND SELLING INDIVIDUAL GOODS ####
+                qt_basket = min(buy_volume_basket, abs(basket_ask_vol+basket_ask_vol_2+basket_ask_vol_3)) 
+                qt_chocolates = min(abs(sell_volume_chocolates), chocolates_bid_vol+chocolates_bid_vol_2+chocolates_bid_vol_3) 
+                qt_strawberries = min(abs(sell_volume_strawberries), strawberries_bid_vol+strawberries_bid_vol_2+strawberries_bid_vol_3) 
+                qt_roses = min(abs(sell_volume_roses), roses_bid_vol+roses_bid_vol_2+roses_bid_vol_3) 
+
+                n_tradable = min(qt_basket, math.floor(qt_chocolates / 4), math.floor(qt_strawberries / 6), qt_roses)
+
+                if n_tradable >= 0:
+                    basket_orders.append(Order('GIFT_BASKET', basket_ask, min(buy_volume_basket, -basket_ask_vol)))
+                    basket_orders.append(Order('GIFT_BASKET', basket_ask_2, max(min(buy_volume_basket+basket_ask_vol, -basket_ask_vol_2), 0)))
+                    basket_orders.append(Order('GIFT_BASKET', basket_ask_3, max(min(buy_volume_basket+basket_ask_vol+basket_ask_vol_2, -basket_ask_vol_3), 0)))
+
+            if z_score_roses > -0.5 and z_score_roses < 0.5 and position_roses != 0:
+                if position_roses > 0: #EXIT LONG POSITION
+                    position1 = math.ceil(position_roses/2)
+                    position2 = math.floor(position_roses/2)
+                    roses_orders.append(Order('ROSES',  int(math.floor(self.ema_prices['ROSES']+1)), -position1))
+                    roses_orders.append(Order('ROSES',  int(math.floor(self.ema_prices['ROSES']+2)), -position2))
+                    
+                elif position_roses < 0: #EXIT SHORT POSITION
+                    position1 = math.ceil(position_roses/2)
+                    position2 = math.floor(position_roses/2)
+                    roses_orders.append(Order('ROSES',  int(math.floor(self.ema_prices['ROSES']-1)), -position1))
+                    roses_orders.append(Order('ROSES',  int(math.floor(self.ema_prices['ROSES']-2)), -position2))
+      
+            elif z_score_roses > 2: #BASKET OVER VALUED, SELL BASKET AND BUY INDIVIDUAL GOODS
+                #### SELLING BASKET AND BUYING INDIVIDUAL GOODS ####
+                qt_basket = min(abs(sell_volume_basket), basket_bid_vol) 
+                qt_chocolates = min(buy_volume_chocolates, abs(chocolates_ask_vol)) 
+                qt_strawberries = min(buy_volume_strawberries, abs(strawberries_ask_vol)) 
+                qt_roses = min(abs(sell_volume_roses), abs(roses_bid_vol)) 
+
+                n_tradable = min(math.floor(qt_chocolates/1.3427), qt_roses)
+
+                if n_tradable >= 0:
+                    roses_orders.append(Order('ROSES', roses_bid, sell_volume_roses))
+
+                    #roses_orders.append(Order('ROSES', roses_bid, - min(abs(sell_volume_roses), roses_bid_vol)))
+                    #roses_orders.append(Order('ROSES', roses_bid_2, - max(min(abs(sell_volume_roses)-roses_bid, roses_bid_vol_2), 0)))
+                    #roses_orders.append(Order('ROSES', roses_bid_3, - max(min(abs(sell_volume_roses)-roses_bid_vol-roses_bid_vol_2, roses_bid_vol_3), 0)))
+
+
+            elif z_score_roses < -2: #BASKET UNDER VALUED, BUY BASKET AND SELL INDIVIDUAL GOODS
+                #### BUYING BASKET AND SELLING INDIVIDUAL GOODS ####
+                qt_basket = min(buy_volume_basket, abs(basket_ask_vol)) 
+                qt_chocolates = min(abs(sell_volume_chocolates), chocolates_bid_vol) 
+                qt_strawberries = min(abs(sell_volume_strawberries), strawberries_bid_vol) 
+                qt_roses = min(abs(buy_volume_roses), abs(roses_ask_vol)) 
+
+                n_tradable = min(math.floor(qt_chocolates / 1.3427), qt_roses)
+                if n_tradable >= 0:
+                    roses_orders.append(Order('ROSES', roses_ask, buy_volume_roses))
+
+                    #roses_orders.append(Order('ROSES', roses_ask, min(buy_volume_roses, -roses_ask_vol)))
+                    #roses_orders.append(Order('ROSES', roses_ask_2, max(min(buy_volume_roses+roses_ask_vol, -roses_ask_vol_2), 0)))
+                    #roses_orders.append(Order('ROSES', roses_ask_3, max(min(buy_volume_roses+roses_ask_vol+roses_ask_vol_2, -roses_ask_vol_3), 0)))
+
+
+
+            if z_score_chocolates > -0.5 and z_score_chocolates < 0.5 and position_chocolates != 0:
+                if position_chocolates > 0: #EXIT LONG POSITION
+                    position1 = math.ceil(position_chocolates/2)
+                    position2 = math.floor(position_chocolates/2)
+                    chocolates_orders.append(Order('CHOCOLATE',  int(math.floor(self.ema_prices['CHOCOLATE']+1)), -position1))
+                    chocolates_orders.append(Order('CHOCOLATE',  int(math.floor(self.ema_prices['CHOCOLATE']+2)), -position2))
+            
+                elif position_chocolates < 0: #EXIT SHORT POSITION
+                    position1 = math.ceil(position_chocolates/2)
+                    position2 = math.floor(position_chocolates/2)
+                    chocolates_orders.append(Order('CHOCOLATE',  int(math.floor(self.ema_prices['CHOCOLATE']-1)), -position1))
+                    chocolates_orders.append(Order('CHOCOLATE',  int(math.floor(self.ema_prices['CHOCOLATE']-2)), -position2))
+
+            elif z_score_chocolates > 2: #BASKET OVER VALUED, SELL BASKET AND BUY INDIVIDUAL GOODS
+                #### SELLING BASKET AND BUYING INDIVIDUAL GOODS ####
+                qt_basket = min(abs(sell_volume_basket), basket_bid_vol) 
+                qt_chocolates = min(buy_volume_chocolates, abs(chocolates_ask_vol)) 
+                qt_strawberries = min(buy_volume_strawberries, abs(strawberries_ask_vol)) 
+                qt_roses = min(buy_volume_roses, abs(roses_ask_vol)) 
+                n_tradable = min(math.floor(qt_chocolates/5.7223), qt_basket)
+
+                if n_tradable >= 0:
+                    chocolates_orders.append(Order('CHOCOLATE', chocolates_ask, math.floor(buy_volume_chocolates)))
+
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask, min(buy_volume_chocolates, -chocolates_ask_vol)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_2, max(min(buy_volume_chocolates+chocolates_ask_vol, -chocolates_ask_vol_2), 0)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_3, max(min(buy_volume_chocolates+chocolates_ask_vol+chocolates_ask_vol_2, -chocolates_ask_vol_3), 0)))
+
+
+            elif z_score_chocolates < -2: #BASKET UNDER VALUED, BUY BASKET AND SELL INDIVIDUAL GOODS
+                #### BUYING BASKET AND SELLING INDIVIDUAL GOODS ####
+                qt_basket = min(buy_volume_basket, abs(basket_ask_vol)) 
+                qt_chocolates = min(abs(sell_volume_chocolates), chocolates_bid_vol) 
+                qt_strawberries = min(abs(sell_volume_strawberries), strawberries_bid_vol) 
+                qt_roses = min(abs(sell_volume_roses), roses_bid_vol) 
+
+                n_tradable = min(math.floor(qt_chocolates / 5.7223), qt_basket)
+                if n_tradable >= 0:
+                    chocolates_orders.append(Order('CHOCOLATE', chocolates_bid, math.floor(sell_volume_chocolates)))
+
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid, - min(abs(sell_volume_chocolates), chocolates_bid_vol)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_2, - max(min(abs(sell_volume_chocolates)-chocolates_bid, chocolates_bid_vol_2), 0)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_3, - max(min(abs(sell_volume_chocolates)-chocolates_bid_vol-chocolates_bid_vol_2, chocolates_bid_vol_3), 0)))
+
+                    
+            
+
+        while len(self.spreads_basket) > 200:
+            self.spreads_basket.pop(0)
+        while len(self.spreads_roses) > 200:
+            self.spreads_roses.pop(0)
+        while len(self.spreads_chocolates) > 200:
+            self.spreads_chocolates.pop(0)
+        while len(self.ratios_basket) > 200:
+            self.ratios_basket.pop(0)
+
+
+        return basket_orders, chocolates_orders, strawberries_orders, roses_orders
 
     def run(self, state: TradingState) -> Dict[str, List[Order]]:
         """
@@ -727,7 +1038,7 @@ class Trader:
         and outputs a list of orders to be sent
         """
         # Initialize the method output dict as an empty dict
-        result = {'AMETHYSTS' : [], 'STARFRUIT' : [], 'ORCHIDS' : []}
+        result = {'AMETHYSTS' : [], 'STARFRUIT' : [], 'ORCHIDS' : [], 'GIFT_BASKET' : [], 'CHOCOLATE' : [], 'STRAWBERRIES' : [], 'ROSES' : []}
 
         self.update_ema_prices(state)
 
@@ -805,6 +1116,15 @@ class Trader:
         except Exception as e:
             print("Error in ORCHIDS strategy")
             print(e)
+        
+        
+        # BASKET STRATEGY
+        try:
+            result['GIFT_BASKET'], result['CHOCOLATE'], result['STRAWBERRIES'], result['ROSES'] = self.basket_strategy(state)
+        
+        except Exception as e:
+            print(e)
+        
         
              
         traderData = "SAMPLE" 
