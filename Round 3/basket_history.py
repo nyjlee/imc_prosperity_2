@@ -66,6 +66,7 @@ strawberries = df[df['product'] == 'STRAWBERRIES']['mid_price']
 roses = df[df['product'] == 'ROSES']['mid_price']
 gift_basket = df[df['product'] == 'GIFT_BASKET']['mid_price']
 
+"""
 model = ARIMA(strawberries, order=(6,1,3))
 model_fit = model.fit()
 print(model_fit.summary())
@@ -74,6 +75,7 @@ print(model_fit.summary())
 residuals = model_fit.resid
 initial_errors = residuals[-2:] 
 print(initial_errors)
+"""
 
 # Combine them into a single DataFrame
 df = pd.DataFrame({
@@ -83,6 +85,21 @@ df = pd.DataFrame({
     'gift_basket': gift_basket
 })
 
+# To perform regression with an intercept
+X = df[['chocolates', 'strawberries', 'roses']]  # Independent variables
+X = sm.add_constant(X)  # Adds a constant term to the predictor
+Y = df['gift_basket']  # Dependent variable
+
+model_with_intercept = sm.OLS(Y, X).fit()  # Fit model
+print("Model with Intercept:")
+print(model_with_intercept.summary())  # Print the summary of regression results
+
+# To perform regression without an intercept
+X_no_intercept = df[['chocolates', 'strawberries', 'roses']]  # Independent variables
+
+model_without_intercept = sm.OLS(Y, X_no_intercept).fit()  # Fit model without intercept
+print("\nModel without Intercept:")
+print(model_without_intercept.summary())  # Print the summary of regression results
 
 
 
