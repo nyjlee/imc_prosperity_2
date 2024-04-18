@@ -1130,6 +1130,7 @@ class Trader:
         traderData = "SAMPLE" 
         
 		# Sample conversion request. Check more details below. 
-        conversions = self.orchids_strategy2(state)[1]
+        #conversions = self.orchids_strategy2(state)[1]
+        conversions = 0
 
         return result, conversions, traderData
