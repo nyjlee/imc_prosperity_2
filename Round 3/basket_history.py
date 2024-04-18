@@ -34,7 +34,11 @@ for i, df in enumerate([df_0, df_1, df_2]):
 df = pd.concat([df_0, df_1])
 df = pd.concat([df, df_2])
 df = df.set_index('timestamp')
-print(df)
+#print(df)
+
+#strawberries_bid = df[df['product'] == 'CHOCOLATE']['bid_price_1']
+#strawberries_ask = df[df['product'] == 'CHOCOLATE']['ask_price_1']
+#print('avg spread:', (strawberries_ask-strawberries_bid).mean())
 
 def basket_spread(products_df):
 
@@ -62,6 +66,15 @@ strawberries = df[df['product'] == 'STRAWBERRIES']['mid_price']
 roses = df[df['product'] == 'ROSES']['mid_price']
 gift_basket = df[df['product'] == 'GIFT_BASKET']['mid_price']
 
+model = ARIMA(strawberries, order=(6,1,3))
+model_fit = model.fit()
+print(model_fit.summary())
+
+# Get the in-sample residuals
+residuals = model_fit.resid
+initial_errors = residuals[-2:] 
+print(initial_errors)
+
 # Combine them into a single DataFrame
 df = pd.DataFrame({
     'chocolates': chocolates,
@@ -69,6 +82,82 @@ df = pd.DataFrame({
     'roses': roses,
     'gift_basket': gift_basket
 })
+
+
+
+
+# Assuming 'chocolates' and 'roses' are your price series
+X = sm.add_constant(chocolates)  # adding a constant term for the intercept
+model = sm.OLS(roses, X).fit()   # OLS regression
+
+print(model.summary())  # This will print out the regression results including β
+
+
+# Assuming df is your DataFrame as described above
+
+def adf_test(series, title=''):
+    """
+    Pass in a time series and an optional title, perform an ADF test
+    and report the results
+    """
+    print(f'Augmented Dickey-Fuller Test: {title}')
+    result = adfuller(series.dropna(), autolag='AIC')  # Drop na values and compute the ADF test
+    labels = ['ADF Test Statistic', 'p-value', '#Lags Used', 'Number of Observations Used']
+    out = pd.Series(result[0:4], index=labels)
+
+    for key, val in result[4].items():
+        out[f'Critical Value ({key})'] = val
+    print(out.to_string())  # Print the series nicely
+    
+    if result[1] <= 0.05:
+        print("Strong evidence against the null hypothesis")
+        print("Reject the null hypothesis")
+        print("Data has no unit root and is stationary")
+    else:
+        print("Weak evidence against the null hypothesis")
+        print("Fail to reject the null hypothesis")
+        print("Data has a unit root and is non-stationary")
+
+# Apply the ADF test to each column
+#adf_test(df['chocolates'], 'Chocolates')
+#adf_test(df['strawberries'], 'Strawberries')
+#adf_test(df['roses'], 'Roses')
+#adf_test(df['gift_basket'], 'Gift Basket')
+
+df['chocolates_diff'] = df['chocolates'].diff().dropna()
+df['strawberries_diff'] = df['strawberries'].diff().dropna()
+df['gift_basket_diff'] = df['gift_basket'].diff().dropna()
+
+#adf_test(df['chocolates_diff'], 'Chocolates Differenced')
+#adf_test(df['strawberries_diff'], 'Strawberries Differenced')
+#adf_test(df['gift_basket_diff'], 'Gift Basket Differenced')
+
+
+# Ensure to drop any NaN values that arise from differencing
+df_final = df[['roses', 'chocolates_diff', 'strawberries_diff', 'gift_basket_diff']].dropna()
+
+
+lag_order_results = select_order(df_final, maxlags=8)
+print(lag_order_results.summary())
+
+
+# Perform the Johansen cointegration test
+# det_order = -1 for no deterministic trend, k_ar_diff = number of lags - 1
+# Common to use 1 less than what would be used in a VAR model
+#johansen_test = coint_johansen(df_final, det_order=-1, k_ar_diff=1)
+
+# Print the test statistic and critical values for the trace statistic
+#print('Eigenvalues:', johansen_test.eig)
+#print('Trace statistic:', johansen_test.lr1)
+#print('Critical values (90%, 95%, 99%):', johansen_test.cvt)
+
+vecm_model = VECM(df_final, k_ar_diff=1, coint_rank=3)  # coint_rank set to 3 based on Johansen test
+vecm_result = vecm_model.fit()
+
+# Output the model summary to review coefficients and error correction terms
+print(vecm_result.summary())
+
+"""
 
 # Ensure all are aligned by time and drop any rows with missing data
 df = df.dropna()
@@ -101,29 +190,48 @@ df['gift_basket_diff'] = df['gift_basket'].diff().dropna()
 df = df.dropna()
 
 # Re-check stationarity after differencing
-check_stationarity(df['chocolates_diff'], 'chocolates_diff')
-check_stationarity(df['strawberries_diff'], 'strawberries_diff')
-check_stationarity(df['gift_basket_diff'], 'gift_basket_diff')
+#check_stationarity(df['chocolates_diff'], 'chocolates_diff')
+#check_stationarity(df['strawberries_diff'], 'strawberries_diff')
+#check_stationarity(df['gift_basket_diff'], 'gift_basket_diff')
 
 
 data_for_johansen = df[['roses', 'chocolates_diff', 'strawberries_diff', 'gift_basket_diff']]
 
 # Perform the Johansen cointegration test
 # k_ar_diff = number of lags minus 1 used in the test, here we use 1 lag
-johansen_test = coint_johansen(data_for_johansen, det_order=0, k_ar_diff=1)
+#johansen_test = coint_johansen(data_for_johansen, det_order=0, k_ar_diff=1)
 
 # Print the results
-print("Eigenvalues:", johansen_test.eig)  # Eigenvalues of the test
-print("Cointegration Test Statistic (Trace):", johansen_test.lr1)  # Test statistics
-print("Critical Values (Trace):", johansen_test.cvt)  # Critical values for the test statistics at different significance levels
-print("Cointegration Test Statistic (Max Eigen):", johansen_test.lr2)  # Maximum eigenvalue statistics
-print("Critical Values (Max Eigen):", johansen_test.cvm)  # Critical values for max eigen statistic
+#print("Eigenvalues:", johansen_test.eig)  # Eigenvalues of the test
+#print("Cointegration Test Statistic (Trace):", johansen_test.lr1)  # Test statistics
+#print("Critical Values (Trace):", johansen_test.cvt)  # Critical values for the test statistics at different significance levels
+#print("Cointegration Test Statistic (Max Eigen):", johansen_test.lr2)  # Maximum eigenvalue statistics
+#print("Critical Values (Max Eigen):", johansen_test.cvm)  # Critical values for max eigen statistic
 
 
 # Fit VAR on levels of data to determine optimal lags
-var_model = VAR(data_for_johansen)
-var_result = var_model.select_order(8)  # Checks up to 15 lags, adjust as necessary
-print(var_result.summary())
+#var_model = VAR(data_for_johansen)
+#var_result = var_model.select_order(8)  # Checks up to 15 lags, adjust as necessary
+#print(var_result.summary())
+
+# Assuming 'data_for_johansen' includes your four series
+vecm_model = VECM(data_for_johansen, k_ar_diff=1, coint_rank=3)  # k_ar_diff is lags-1 in VECM
+vecm_result = vecm_model.fit()
+
+# Get the cointegrating coefficients (beta)
+cointegrating_coefficients = vecm_result.beta
+
+# Get the adjustment coefficients (alpha), i.e., the error correction terms
+adjustment_coefficients = vecm_result.alpha
+
+print("Cointegrating Coefficients (Beta):\n", cointegrating_coefficients)
+print("Adjustment Coefficients (Alpha):\n", adjustment_coefficients)
+
+"""
+########### PLEASE RUN THE ABOVE ###########
+
+
+
 
 """
 # Assuming 'series' is your Pandas Series with the time series data
@@ -234,7 +342,7 @@ else:
                     strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid+2, -n_tradable * 6))
                     roses_orders.append(Order('ROSES', roses_bid+2, -n_tradable))
             """
-
+"""
 import statsmodels.api as sm
 
 # y and x are your datasets
@@ -248,3 +356,5 @@ from statsmodels.tsa.stattools import adfuller
 result = adfuller(residuals)
 print('ADF Statistic: %f' % result[0])
 print('p-value: %f' % result[1])
+
+"""
