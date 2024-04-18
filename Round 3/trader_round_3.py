@@ -790,28 +790,28 @@ class Trader:
         position_orchids = self.get_position('ORCHIDS', state)
         bid_volume = self.POSITION_LIMITS['ORCHIDS'] - position_orchids
         ask_volume = - self.POSITION_LIMITS['ORCHIDS'] - position_orchids
-        best_bid1, best_bid2, best_bid3 = self.get_best_bid('ORCHIDS', state), self.get_bid2('ORCHIDS', state)[0], self.get_bid3('ORCHIDS', state)[0]
-        best_ask1, best_ask2, best_ask3 = self.get_best_ask('ORCHIDS', state), self.get_ask2('ORCHIDS', state)[0], self.get_ask3('ORCHIDS', state)[0]
+        best_bid1, best_bid2, best_bid3 = self.get_best_bid('ORCHIDS', state)[0], self.get_bid2('ORCHIDS', state)[0], self.get_bid3('ORCHIDS', state)[0]
+        best_ask1, best_ask2, best_ask3 = self.get_best_ask('ORCHIDS', state)[0], self.get_ask2('ORCHIDS', state)[0], self.get_ask3('ORCHIDS', state)[0]
 
         if len(self.production_orchid_history) < 50:
-            orders.append(Order('ORCHIDS', math.floor(best_bid1), volume=math.floor(bid_volume/4)))
+            orders.append(Order('ORCHIDS', math.floor(best_bid1), math.floor(bid_volume/4)))
             return orders
         
         first_derivative = np.diff(self.production_orchid_history[-50:], n=1)
         second_derivative = np.diff(first_derivative, n=1)
-
+        
         threshold = 0.5
         if len(second_derivative) > 0 and abs(second_derivative[-1]) <= threshold:
             if second_derivative[-1] >= 0:
                 if bid_volume > 0:
-                    orders.append(Order('ORCHIDS', math.floor(best_bid1), volume=math.floor(bid_volume/2)))
-                    orders.append(Order('ORCHIDS', math.floor(best_bid2), volume=math.ceil(bid_volume/4)))
-                    orders.append(Order('ORCHIDS', math.floor(best_bid3), volume=math.ceil(bid_volume/4)))
+                    orders.append(Order('ORCHIDS', math.floor(best_bid1), math.floor(bid_volume/2)))
+                    orders.append(Order('ORCHIDS', math.floor(best_bid2), math.floor(bid_volume/4)))
+                    orders.append(Order('ORCHIDS', math.floor(best_bid3), math.floor(bid_volume/4)))
             else:
                 if ask_volume < 0:
-                    orders.append(Order('ORCHIDS', math.floor(best_ask1), volume=math.floor(ask_volume/2)))
-                    orders.append(Order('ORCHIDS', math.floor(best_ask2), volume=math.ceil(ask_volume/4)))
-                    orders.append(Order('ORCHIDS', math.floor(best_ask3), volume=math.ceil(ask_volume/4)))
+                    orders.append(Order('ORCHIDS', math.floor(best_ask1), math.floor(ask_volume/2)))
+                    orders.append(Order('ORCHIDS', math.floor(best_ask2), math.floor(ask_volume/4)))
+                    orders.append(Order('ORCHIDS', math.floor(best_ask3), math.floor(ask_volume/4)))
         return orders
         
 
@@ -899,7 +899,7 @@ class Trader:
         
         # ORCHIDS STRATEGY
         try:
-            result['ORCHIDS'] = self.orchids_strategy3(state)[0]
+            result['ORCHIDS'] = self.orchids_strategy4(state)
         except Exception as e:
             print("Error in ORCHIDS strategy")
             print(e)
@@ -907,6 +907,6 @@ class Trader:
         traderData = "SAMPLE" 
         
 		# Sample conversion request. Check more details below. 
-        conversions = self.orchids_strategy3(state)[1]
+        conversions = 0
 
         return result, conversions, traderData
