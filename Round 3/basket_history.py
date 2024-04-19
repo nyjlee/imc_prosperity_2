@@ -34,6 +34,7 @@ for i, df in enumerate([df_0, df_1, df_2]):
 df = pd.concat([df_0, df_1])
 df = pd.concat([df, df_2])
 df = df.set_index('timestamp')
+df=df[df.index>20000]
 #print(df)
 
 #strawberries_bid = df[df['product'] == 'CHOCOLATE']['bid_price_1']
@@ -84,6 +85,52 @@ df = pd.DataFrame({
     'roses': roses,
     'gift_basket': gift_basket
 })
+
+def linear_regression(y, x1, x2, x3):
+    # Convert lists to NumPy arrays
+    Y = np.array(y)
+    X1 = np.array(x1)
+    X2 = np.array(x2)
+    X3 = np.array(x3)
+    
+    # Stack the independent variables into a matrix X with an intercept column (constant term)
+    X = np.column_stack((np.ones(len(Y)), X1, X2, X3))
+    
+    # Perform the OLS regression using NumPy's least squares function, which returns the coefficients
+    # np.linalg.lstsq returns several values, we're interested in the first one (the coefficients)
+    coefficients, residuals, rank, s = np.linalg.lstsq(X, Y, rcond=None)
+    
+    # Calculate standard errors of the coefficients
+    # First, compute the mean squared error (MSE)
+    mse = residuals / (len(Y) - len(coefficients))
+    
+    # Compute the variance-covariance matrix of the parameter estimates
+    cov_b = mse * np.linalg.inv(X.T.dot(X))
+    
+    # Standard errors are the square roots of the diagonal elements of the covariance matrix
+    std_err = np.sqrt(np.diagonal(cov_b))
+    
+    # Extract intercept, coefficients and their standard errors
+    intercept = coefficients[0]
+    intercept_std_err = std_err[0]
+    betas = coefficients[1:]
+    beta_std_errs = std_err[1:]
+
+    print(intercept)
+    print(intercept_std_err)
+    print(betas)
+    print(beta_std_errs)
+    
+    return {
+        'Intercept': intercept,
+        'Intercept Std Error': intercept_std_err,
+        'Beta Coefficients': betas,
+        'Beta Std Errors': beta_std_errs
+    }
+
+linear_regression(gift_basket.tolist(), chocolates.tolist(), strawberries.tolist(), roses.tolist())
+
+df = df[df.index>1000]
 
 # To perform regression with an intercept
 X = df[['chocolates', 'strawberries', 'roses']]  # Independent variables

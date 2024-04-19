@@ -50,6 +50,7 @@ class Trader:
 
     spreads_basket = []
     ratios_basket = []
+    spreads_chocolates = []
 
     etf_prices = []
     etf_returns = []
@@ -219,7 +220,7 @@ class Trader:
 
                 self.mid_prices_history[symbol].append(mid_price)
 
-                while len(self.mid_prices_history[symbol]) > self.window_size:
+                while len(self.mid_prices_history[symbol]) > 100:
                     self.mid_prices_history[symbol].pop(0)
 
     def update_diff_history(self, diff_history, p_history):
@@ -310,6 +311,44 @@ class Trader:
         else:
             print(total_volume)
             return 0
+
+    def linear_regression(self, y, x1, x2, x3):
+        # Convert lists to NumPy arrays
+        Y = np.array(y)
+        X1 = np.array(x1)
+        X2 = np.array(x2)
+        X3 = np.array(x3)
+        
+        # Stack the independent variables into a matrix X with an intercept column (constant term)
+        X = np.column_stack((np.ones(len(Y)), X1, X2, X3))
+        
+        # Perform the OLS regression using NumPy's least squares function, which returns the coefficients
+        # np.linalg.lstsq returns several values, we're interested in the first one (the coefficients)
+        coefficients, residuals, rank, s = np.linalg.lstsq(X, Y, rcond=None)
+        
+        # Calculate standard errors of the coefficients
+        # First, compute the mean squared error (MSE)
+        mse = residuals / (len(Y) - len(coefficients))
+        
+        # Compute the variance-covariance matrix of the parameter estimates
+        cov_b = mse * np.linalg.inv(X.T.dot(X))
+        
+        # Standard errors are the square roots of the diagonal elements of the covariance matrix
+        std_err = np.sqrt(np.diagonal(cov_b))
+        
+        # Extract intercept, coefficients and their standard errors
+        intercept = coefficients[0]
+        intercept_std_err = std_err[0]
+        betas = coefficients[1:]
+        beta_std_errs = std_err[1:]
+
+        print(intercept)
+        print(intercept_std_err)
+        print(betas)
+        print(beta_std_errs)
+
+        return intercept, intercept_std_err, betas, beta_std_errs
+        
         
 
     def basket_strategy(self, state : TradingState) -> List[Order]:
@@ -376,62 +415,86 @@ class Trader:
         roses_bid_3, roses_bid_vol_3 = self.get_bid3('ROSES', state)
         roses_ask_3, roses_ask_vol_3 = self.get_ask3('ROSES', state)
 
-        nav = 3.8512 * chocolates_mid_price + 6.5176 *strawberries_mid_price + 0.9665 * roses_mid_price + (-48.5420)
-        spread = basket_mid_price - nav 
-        self.spreads_basket.append(spread)
-        print('SPREAD:', spread)
-        rolling_spreads = self.spreads_basket[-10:]
-        rolling_spread = statistics.mean(rolling_spreads)
+        gift_basket_prices = self.mid_prices_history['GIFT_BASKET']
+        chocolates_prices = self.mid_prices_history['CHOCOLATE']
+        strawberries_prices = self.mid_prices_history['STRAWBERRIES']
+        roses_prices = self.mid_prices_history['ROSES']
+
+        
+        #print('SPREAD:', spread)
+        #rolling_spreads = self.spreads_basket[-10:]
+        #rolling_spread = statistics.mean(rolling_spreads)
    
-        if len(self.spreads_basket) >= 100:
+        
+        if len(self.mid_prices_history['GIFT_BASKET']) > 10:
+            #intercept, intercept_std, betas, betas_std = self.linear_regression(gift_basket_prices, chocolates_prices, strawberries_prices, roses_prices)
+            intercept = 165.3320184325068
+            intercept_std = 72.08630428543141
+            betas = [3.84317626, 6.17179092, 1.05264383]
+            beta_chocolates = betas[0]
+            beta_strawberries = betas[1]
+            beta_roses = betas[2]
+
+            nav = beta_chocolates * chocolates_mid_price + beta_strawberries *strawberries_mid_price + beta_roses * roses_mid_price + intercept
+            #print('regression!')
+            #print(beta_chocolates)
+            #print(beta_strawberries)
+            #print(beta_roses)
+            #print(intercept)
+            spread = basket_mid_price - nav 
+            print('spread', spread)
+            self.spreads_basket.append(spread)
             mean = statistics.mean(self.spreads_basket)
             std = statistics.stdev(self.spreads_basket)
 
             z_score = (spread - mean) / std
   
             print('Z-SCORE: ',z_score)
+
+            print(intercept_std*1.2)
             
             
             #if z_score > -0.4 and z_score < 0.4 and current_position_all != 0:
-            if spread < 71.001 * 0.1 and spread > 71.001 * (-0.1) and current_position_all != 0:
+            if spread < intercept_std * 0.1 and spread > intercept_std * (-0.1) and position_basket != 0:
                 if position_basket > 0:
-                    basket_orders.append(Order('GIFT_BASKET', basket_bid, - min(position_basket, basket_bid_vol)))
-                    basket_orders.append(Order('GIFT_BASKET', basket_bid_2, - max(min(position_basket-basket_bid, basket_bid_vol_2), 0)))
+                    basket_orders.append(Order('GIFT_BASKET', basket_bid, -min(position_basket, basket_bid_vol)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_bid_2, - max(min(position_basket-basket_bid, basket_bid_vol_2), 0)))
                     #basket_orders.append(Order('GIFT_BASKET', basket_bid_3, - max(min(abs(-position_basket)-basket_bid_vol-basket_bid_vol_2, basket_bid_vol_3), 0)))
                 elif position_basket < 0:
                     basket_orders.append(Order('GIFT_BASKET', basket_ask, min(-position_basket, -basket_ask_vol)))
-                    basket_orders.append(Order('GIFT_BASKET', basket_ask_2, max(min(-position_basket+basket_ask_vol, -basket_ask_vol_2), 0)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_ask_2, max(min(-position_basket+basket_ask_vol, -basket_ask_vol_2), 0)))
                     #basket_orders.append(Order('GIFT_BASKET', basket_ask_3, max(min(-position_basket+basket_ask_vol+basket_ask_vol_2, -basket_ask_vol_3), 0)))
-
+                """
                 if position_chocolates > 0:
                     chocolates_orders.append(Order('CHOCOLATE', chocolates_bid, -min(position_chocolates, chocolates_bid_vol)))
-                    chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_2,- max(min(position_chocolates-chocolates_bid_vol, chocolates_bid_vol_2),0)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_2,- max(min(position_chocolates-chocolates_bid_vol, chocolates_bid_vol_2),0)))
                     #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_3, -max(min(position_chocolates*4-chocolates_bid_vol-chocolates_bid_vol_2, chocolates_bid_vol_3),0)))
                 elif position_chocolates < 0:
                     chocolates_orders.append(Order('CHOCOLATE', chocolates_ask, min(-position_chocolates, -chocolates_ask_vol)))
-                    chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_2, max(min(-position_chocolates+chocolates_ask_vol, -chocolates_ask_vol_2),0)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_2, max(min(-position_chocolates+chocolates_ask_vol, -chocolates_ask_vol_2),0)))
                     #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_3, max(min(-position_chocolates*4+chocolates_ask_vol+chocolates_ask_vol_2, -chocolates_ask_vol_3),0)))
 
                 if position_strawberries > 0:
                     strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid, -max(min(position_strawberries, strawberries_bid_vol),0)))
-                    strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid_2,- max(min(position_strawberries-strawberries_bid_vol, strawberries_bid_vol_2), 0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid_2,- max(min(position_strawberries-strawberries_bid_vol, strawberries_bid_vol_2), 0)))
                     #strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid_3, -max(min(position_strawberries-strawberries_bid_vol-strawberries_bid_vol_2, strawberries_bid_vol_3),0)))
                 elif position_strawberries < 0:
                     strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask, max(min(-position_strawberries, -strawberries_ask_vol),0)))
-                    strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask_2, max(min(-position_strawberries+strawberries_ask_vol, -strawberries_ask_vol_2), 0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask_2, max(min(-position_strawberries+strawberries_ask_vol, -strawberries_ask_vol_2), 0)))
                     #strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask_3, max(min(-position_strawberries+strawberries_ask_vol+strawberries_ask_vol_2, -strawberries_ask_vol_3),0)))
 
                 if position_roses > 0:
                     roses_orders.append(Order('ROSES', roses_bid, -max(min(position_roses, roses_bid_vol),0)))
-                    roses_orders.append(Order('ROSES', roses_bid_2, -max(min(position_roses-roses_bid_vol, roses_bid_vol_2),0)))
+                    #roses_orders.append(Order('ROSES', roses_bid_2, -max(min(position_roses-roses_bid_vol, roses_bid_vol_2),0)))
                     #roses_orders.append(Order('ROSES', roses_bid_3, -max(min(position_roses-roses_bid_vol-roses_bid_vol_2, roses_bid_vol_3),0)))
                 elif position_roses < 0:
                     roses_orders.append(Order('ROSES', roses_ask, max(min(-position_roses, -roses_ask_vol),0)))
-                    roses_orders.append(Order('ROSES', roses_ask_2, max(min(-position_roses+roses_ask_vol, -roses_ask_vol_2),0)))
+                    #roses_orders.append(Order('ROSES', roses_ask_2, max(min(-position_roses+roses_ask_vol, -roses_ask_vol_2),0)))
                     #roses_orders.append(Order('ROSES', roses_ask_3, max(min(-position_roses+roses_ask_vol+roses_ask_vol_2, -roses_ask_vol_3),0)))            
-            
-            #if z_score > 1.6: #BASKET OVER VALUED, SELL BASKET AND BUY INDIVIDUAL GOODS
-            if spread > 71.001 * 1.5:
+                """
+
+            #if z_score > 2: #BASKET OVER VALUED, SELL BASKET AND BUY INDIVIDUAL GOODS
+            if spread > intercept_std * 1:
                 #### SELLING BASKET AND BUYING INDIVIDUAL GOODS ####
                 qt_basket = min(abs(sell_volume_basket), basket_bid_vol) 
                 print(qt_basket)
@@ -442,30 +505,30 @@ class Trader:
                 qt_roses = min(buy_volume_roses, abs(roses_ask_vol)) 
                 print(qt_roses)
 
-                n_tradable = min(qt_basket, math.floor(qt_chocolates/3.8512), math.floor(qt_strawberries/6.5176), math.floor(qt_roses/0.9665 ))
-                print(n_tradable)
-
+                #n_tradable = min(qt_basket, math.floor(qt_chocolates/beta_chocolates), math.floor(qt_strawberries/beta_strawberries), math.floor(qt_roses/beta_roses ))
+                #print(n_tradable)
+                n_tradable = 1
                 if n_tradable > 0:
-                    
-                    basket_orders.append(Order('GIFT_BASKET', basket_bid, - min(abs(n_tradable), basket_bid_vol)))
+                    basket_orders.append(Order('GIFT_BASKET', basket_bid, sell_volume_basket))
+                    ##basket_orders.append(Order('GIFT_BASKET', basket_bid, - min(abs(n_tradable), basket_bid_vol)))
                     #basket_orders.append(Order('GIFT_BASKET', basket_bid_2, - max(min(abs(n_tradable)-basket_bid, basket_bid_vol_2), 0)))
                     #basket_orders.append(Order('GIFT_BASKET', basket_bid_3, - max(min(abs(n_tradable)-basket_bid_vol-basket_bid_vol_2, basket_bid_vol_3), 0)))
                     
-                    chocolates_orders.append(Order('CHOCOLATE', chocolates_ask, min(math.floor(n_tradable*3.8512), -chocolates_ask_vol)))
-                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_2, max(min(math.floor(n_tradable*3.8512)+chocolates_ask_vol, -chocolates_ask_vol_2),0)))
+                    ##chocolates_orders.append(Order('CHOCOLATE', chocolates_ask, min(math.floor(n_tradable*beta_chocolates), -chocolates_ask_vol)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_2, max(min(math.floor(n_tradable*beta_chocolates)+chocolates_ask_vol, -chocolates_ask_vol_2),0)))
                     #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_3, max(min(n_tradable*4+chocolates_ask_vol+chocolates_ask_vol_2, -chocolates_ask_vol_3),0)))
 
-                    strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask, max(min(math.floor(n_tradable*6.5176), -strawberries_ask_vol),0)))
-                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask_2, max(min(math.floor(n_tradable*6.5176)+strawberries_ask_vol, -strawberries_ask_vol_2), 0)))
+                    ##strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask, max(min(math.floor(n_tradable*beta_strawberries), -strawberries_ask_vol),0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask_2, max(min(math.floor(n_tradable*beta_strawberries)+strawberries_ask_vol, -strawberries_ask_vol_2), 0)))
                     #strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask_3, max(min(n_tradable*6+strawberries_ask_vol+strawberries_ask_vol_2, -strawberries_ask_vol_3),0)))
 
-                    roses_orders.append(Order('ROSES', roses_ask, max(min(math.floor(n_tradable*0.9665 ), -roses_ask_vol),0)))
-                    #roses_orders.append(Order('ROSES', roses_ask_2, max(min(math.floor(n_tradable*0.9665 )+roses_ask_vol, -roses_ask_vol_2),0)))
+                    ##roses_orders.append(Order('ROSES', roses_ask, max(min(math.floor(n_tradable*beta_roses ), -roses_ask_vol),0)))
+                    #roses_orders.append(Order('ROSES', roses_ask_2, max(min(math.floor(n_tradable*beta_roses )+roses_ask_vol, -roses_ask_vol_2),0)))
                     #roses_orders.append(Order('ROSES', roses_ask_3, max(min(n_tradable+roses_ask_vol+roses_ask_vol_2, -roses_ask_vol_3),0)))
                     
                     
-            #elif z_score < -1.6: #BASKET UNDER VALUED, BUY BASKET AND SELL INDIVIDUAL GOODS
-            if spread < 71.001 * (-1.5):
+            #elif z_score < -2: #BASKET UNDER VALUED, BUY BASKET AND SELL INDIVIDUAL GOODS
+            if spread < intercept_std * (-1):
                 #### BUYING BASKET AND SELLING INDIVIDUAL GOODS ####
                 qt_basket = min(buy_volume_basket, abs(basket_ask_vol)) 
                 print(qt_basket)
@@ -476,31 +539,382 @@ class Trader:
                 qt_roses = min(abs(sell_volume_roses), roses_bid_vol) 
                 print(qt_roses)
 
-                n_tradable = min(qt_basket, math.floor(qt_chocolates / 3.8512), math.floor(qt_strawberries / 6.5176), math.floor(qt_roses / 0.9665 ))
-                print(n_tradable)
+                #n_tradable = min(qt_basket, math.floor(qt_chocolates / beta_chocolates), math.floor(qt_strawberries / beta_strawberries), math.floor(qt_roses / beta_roses ))
+                #print(n_tradable)
+                n_tradable = 1
                 if n_tradable > 0:
-                    
-                    basket_orders.append(Order('GIFT_BASKET', basket_ask, min(n_tradable, -basket_ask_vol)))
+                    basket_orders.append(Order('GIFT_BASKET', basket_ask, buy_volume_basket))
+                    ##basket_orders.append(Order('GIFT_BASKET', basket_ask, min(n_tradable, -basket_ask_vol)))
                     #basket_orders.append(Order('GIFT_BASKET', basket_ask_2, max(min(n_tradable+basket_ask_vol, -basket_ask_vol_2), 0)))
                     #basket_orders.append(Order('GIFT_BASKET', basket_ask_3, max(min(n_tradable+basket_ask_vol+basket_ask_vol_2, -basket_ask_vol_3), 0)))
                     
-                    chocolates_orders.append(Order('CHOCOLATE', chocolates_bid, -min(math.floor(n_tradable*3.8512), chocolates_bid_vol)))
-                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_2,- max(min(math.floor(n_tradable*3.8512)-chocolates_bid_vol, chocolates_bid_vol_2),0)))
+                    ##chocolates_orders.append(Order('CHOCOLATE', chocolates_bid, -min(math.floor(n_tradable*beta_chocolates), chocolates_bid_vol)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_2,- max(min(math.floor(n_tradable*beta_chocolates)-chocolates_bid_vol, chocolates_bid_vol_2),0)))
                     #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_3, -max(min(n_tradable*4-chocolates_bid_vol-chocolates_bid_vol_2, chocolates_bid_vol_3),0)))
 
-                    strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid, -max(min(math.floor(n_tradable*6.5176), strawberries_bid_vol),0)))
-                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid_2,- max(min(math.floor(n_tradable*6.5176)-strawberries_bid_vol, strawberries_bid_vol_2), 0)))
+                    ##strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid, -max(min(math.floor(n_tradable*beta_strawberries), strawberries_bid_vol),0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid_2,- max(min(math.floor(n_tradable*beta_strawberries)-strawberries_bid_vol, strawberries_bid_vol_2), 0)))
                     #strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid_3, -max(min(n_tradable*6-strawberries_bid_vol-strawberries_bid_vol_2, strawberries_bid_vol_3),0)))
 
-                    roses_orders.append(Order('ROSES', roses_bid, -max(min(math.floor(n_tradable*0.9665 ), roses_bid_vol),0)))
-                    #roses_orders.append(Order('ROSES', roses_bid_2, -max(min(math.floor(n_tradable*0.9665 )-roses_bid_vol, roses_bid_vol_2),0)))
+                    ##roses_orders.append(Order('ROSES', roses_bid, -max(min(math.floor(n_tradable*beta_roses ), roses_bid_vol),0)))
+                    #roses_orders.append(Order('ROSES', roses_bid_2, -max(min(math.floor(n_tradable*beta_roses )-roses_bid_vol, roses_bid_vol_2),0)))
                     #roses_orders.append(Order('ROSES', roses_bid_3, -max(min(n_tradable-roses_bid_vol-roses_bid_vol_2, roses_bid_vol_3),0)))
+           
+
+        
+        if len(self.mid_prices_history['ROSES']) > 10:
+            #intercept, intercept_std, betas, betas_std = self.linear_regression(gift_basket_prices, chocolates_prices, strawberries_prices, roses_prices)
+            intercept = 24820
+            intercept_std = 163.617
+            beta_roses = 3.1629
+
+            nav = beta_roses * roses_mid_price + intercept
+            #print('regression!')
+            #print(beta_chocolates)
+            #print(beta_strawberries)
+            #print(beta_roses)
+            #print(intercept)
+            spread = basket_mid_price - nav 
+            print('spread', spread)
+            self.spreads_basket.append(spread)
+            mean = statistics.mean(self.spreads_basket)
+            std = statistics.stdev(self.spreads_basket)
+
+            z_score = (spread - mean) / std
+  
+            print('Z-SCORE: ',z_score)
+
+            print(intercept_std*1.2)
+            
+            
+            #if z_score > -0.4 and z_score < 0.4 and current_position_all != 0:
+            if spread < intercept_std * 0.1 and spread > intercept_std * (-0.1) and position_roses != 0:
+                """
+                if position_basket > 0:
+                    basket_orders.append(Order('GIFT_BASKET', basket_bid, - min(position_basket, basket_bid_vol)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_bid_2, - max(min(position_basket-basket_bid, basket_bid_vol_2), 0)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_bid_3, - max(min(abs(-position_basket)-basket_bid_vol-basket_bid_vol_2, basket_bid_vol_3), 0)))
+                elif position_basket < 0:
+                    basket_orders.append(Order('GIFT_BASKET', basket_ask, min(-position_basket, -basket_ask_vol)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_ask_2, max(min(-position_basket+basket_ask_vol, -basket_ask_vol_2), 0)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_ask_3, max(min(-position_basket+basket_ask_vol+basket_ask_vol_2, -basket_ask_vol_3), 0)))
+
+                if position_chocolates > 0:
+                    chocolates_orders.append(Order('CHOCOLATE', chocolates_bid, -min(position_chocolates, chocolates_bid_vol)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_2,- max(min(position_chocolates-chocolates_bid_vol, chocolates_bid_vol_2),0)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_3, -max(min(position_chocolates*4-chocolates_bid_vol-chocolates_bid_vol_2, chocolates_bid_vol_3),0)))
+                elif position_chocolates < 0:
+                    chocolates_orders.append(Order('CHOCOLATE', chocolates_ask, min(-position_chocolates, -chocolates_ask_vol)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_2, max(min(-position_chocolates+chocolates_ask_vol, -chocolates_ask_vol_2),0)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_3, max(min(-position_chocolates*4+chocolates_ask_vol+chocolates_ask_vol_2, -chocolates_ask_vol_3),0)))
+
+                if position_strawberries > 0:
+                    strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid, -max(min(position_strawberries, strawberries_bid_vol),0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid_2,- max(min(position_strawberries-strawberries_bid_vol, strawberries_bid_vol_2), 0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid_3, -max(min(position_strawberries-strawberries_bid_vol-strawberries_bid_vol_2, strawberries_bid_vol_3),0)))
+                elif position_strawberries < 0:
+                    strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask, max(min(-position_strawberries, -strawberries_ask_vol),0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask_2, max(min(-position_strawberries+strawberries_ask_vol, -strawberries_ask_vol_2), 0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask_3, max(min(-position_strawberries+strawberries_ask_vol+strawberries_ask_vol_2, -strawberries_ask_vol_3),0)))
+                """
+                if position_roses > 0:
+                    roses_orders.append(Order('ROSES', roses_bid, -max(min(position_roses, roses_bid_vol),0)))
+                    #roses_orders.append(Order('ROSES', roses_bid_2, -max(min(position_roses-roses_bid_vol, roses_bid_vol_2),0)))
+                    #roses_orders.append(Order('ROSES', roses_bid_3, -max(min(position_roses-roses_bid_vol-roses_bid_vol_2, roses_bid_vol_3),0)))
+                elif position_roses < 0:
+                    roses_orders.append(Order('ROSES', roses_ask, max(min(-position_roses, -roses_ask_vol),0)))
+                    #roses_orders.append(Order('ROSES', roses_ask_2, max(min(-position_roses+roses_ask_vol, -roses_ask_vol_2),0)))
+                    #roses_orders.append(Order('ROSES', roses_ask_3, max(min(-position_roses+roses_ask_vol+roses_ask_vol_2, -roses_ask_vol_3),0)))            
+            
+            #if z_score > 2: #BASKET OVER VALUED, SELL BASKET AND BUY INDIVIDUAL GOODS
+            if spread > intercept_std * 1:
+                #### SELLING BASKET AND BUYING INDIVIDUAL GOODS ####
+                qt_basket = min(abs(sell_volume_basket), basket_bid_vol) 
+                print(qt_basket)
+                qt_chocolates = min(buy_volume_chocolates, abs(chocolates_ask_vol)) 
+                print(qt_chocolates)
+                qt_strawberries = min(buy_volume_strawberries, abs(strawberries_ask_vol)) 
+                print(qt_strawberries)
+                qt_roses = min(buy_volume_roses, abs(roses_ask_vol)) 
+                print(qt_roses)
+
+                #n_tradable = min(qt_basket, math.floor(qt_chocolates/beta_chocolates), math.floor(qt_strawberries/beta_strawberries), math.floor(qt_roses/beta_roses ))
+                n_tradable = 1
+                print(n_tradable)
+
+                if n_tradable > 0:
+                    #basket_orders.append(Order('GIFT_BASKET', basket_bid, sell_volume_basket))
+                    ##basket_orders.append(Order('GIFT_BASKET', basket_bid, - min(abs(n_tradable), basket_bid_vol)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_bid_2, - max(min(abs(n_tradable)-basket_bid, basket_bid_vol_2), 0)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_bid_3, - max(min(abs(n_tradable)-basket_bid_vol-basket_bid_vol_2, basket_bid_vol_3), 0)))
                     
+                    roses_orders.append(Order('ROSES', roses_ask, buy_volume_roses))
+                    ##chocolates_orders.append(Order('CHOCOLATE', chocolates_ask, min(math.floor(n_tradable*beta_chocolates), -chocolates_ask_vol)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_2, max(min(math.floor(n_tradable*beta_chocolates)+chocolates_ask_vol, -chocolates_ask_vol_2),0)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_3, max(min(n_tradable*4+chocolates_ask_vol+chocolates_ask_vol_2, -chocolates_ask_vol_3),0)))
 
+                    ##strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask, max(min(math.floor(n_tradable*beta_strawberries), -strawberries_ask_vol),0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask_2, max(min(math.floor(n_tradable*beta_strawberries)+strawberries_ask_vol, -strawberries_ask_vol_2), 0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask_3, max(min(n_tradable*6+strawberries_ask_vol+strawberries_ask_vol_2, -strawberries_ask_vol_3),0)))
 
-        while len(self.spreads_basket) > 100:
+                    ##roses_orders.append(Order('ROSES', roses_ask, max(min(math.floor(n_tradable*beta_roses ), -roses_ask_vol),0)))
+                    #roses_orders.append(Order('ROSES', roses_ask_2, max(min(math.floor(n_tradable*beta_roses )+roses_ask_vol, -roses_ask_vol_2),0)))
+                    #roses_orders.append(Order('ROSES', roses_ask_3, max(min(n_tradable+roses_ask_vol+roses_ask_vol_2, -roses_ask_vol_3),0)))
+                    
+                    
+            #elif z_score < -2: #BASKET UNDER VALUED, BUY BASKET AND SELL INDIVIDUAL GOODS
+            if spread < intercept_std * (-1):
+                #### BUYING BASKET AND SELLING INDIVIDUAL GOODS ####
+                qt_basket = min(buy_volume_basket, abs(basket_ask_vol)) 
+                print(qt_basket)
+                qt_chocolates = min(abs(sell_volume_chocolates), chocolates_bid_vol) 
+                print(qt_chocolates)
+                qt_strawberries = min(abs(sell_volume_strawberries), strawberries_bid_vol) 
+                print(qt_strawberries)
+                qt_roses = min(abs(sell_volume_roses), roses_bid_vol) 
+                print(qt_roses)
+
+                #n_tradable = min(qt_basket, math.floor(qt_chocolates / beta_chocolates), math.floor(qt_strawberries / beta_strawberries), math.floor(qt_roses / beta_roses ))
+                n_tradable = 1
+                print(n_tradable)
+                if n_tradable > 0:
+                    #basket_orders.append(Order('GIFT_BASKET', basket_ask, buy_volume_basket))
+                    ##basket_orders.append(Order('GIFT_BASKET', basket_ask, min(n_tradable, -basket_ask_vol)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_ask_2, max(min(n_tradable+basket_ask_vol, -basket_ask_vol_2), 0)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_ask_3, max(min(n_tradable+basket_ask_vol+basket_ask_vol_2, -basket_ask_vol_3), 0)))
+                    
+                    roses_orders.append(Order('ROSES', roses_bid, sell_volume_roses))
+                    ##chocolates_orders.append(Order('CHOCOLATE', chocolates_bid, -min(math.floor(n_tradable*beta_chocolates), chocolates_bid_vol)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_2,- max(min(math.floor(n_tradable*beta_chocolates)-chocolates_bid_vol, chocolates_bid_vol_2),0)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_3, -max(min(n_tradable*4-chocolates_bid_vol-chocolates_bid_vol_2, chocolates_bid_vol_3),0)))
+
+                    ##strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid, -max(min(math.floor(n_tradable*beta_strawberries), strawberries_bid_vol),0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid_2,- max(min(math.floor(n_tradable*beta_strawberries)-strawberries_bid_vol, strawberries_bid_vol_2), 0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid_3, -max(min(n_tradable*6-strawberries_bid_vol-strawberries_bid_vol_2, strawberries_bid_vol_3),0)))
+
+                    ##roses_orders.append(Order('ROSES', roses_bid, -max(min(math.floor(n_tradable*beta_roses ), roses_bid_vol),0)))
+                    #roses_orders.append(Order('ROSES', roses_bid_2, -max(min(math.floor(n_tradable*beta_roses )-roses_bid_vol, roses_bid_vol_2),0)))
+                    #roses_orders.append(Order('ROSES', roses_bid_3, -max(min(n_tradable-roses_bid_vol-roses_bid_vol_2, roses_bid_vol_3),0)))   
+        
+
+        intercept = 25410
+        intercept_std = 88.407
+        beta_chocolates = 5.7223
+
+        nav = beta_chocolates * chocolates_mid_price #+ intercept
+        spread_chocolate = basket_mid_price - nav
+        self.spreads_chocolates.append(spread_chocolate)
+        
+
+        if len(self.spreads_chocolates) >= 10:
+            rolling_spreads = self.spreads_chocolates[-10:]
+            rolling_spread = statistics.mean(rolling_spreads)
+            #print('regression!')
+            #print(beta_chocolates)
+            #print(beta_strawberries)
+            #print(beta_roses)
+            #print(intercept)
+            mean = statistics.mean(self.spreads_chocolates)
+            std = statistics.stdev(self.spreads_chocolates)
+
+            z_score = (rolling_spread - mean) / std
+  
+            print('Z-SCORE: ',z_score)
+
+            print(intercept_std*1.2)
+
+            intercept = 26800
+            intercept_std = 441.474
+            #beta_chocolates = 5.2957
+            beta_strawberries = 10.9044
+
+            nav = beta_strawberries * strawberries_mid_price  + intercept
+            spread = basket_mid_price - nav
+            
+            #if z_score > -0.4 and z_score < 0.4 and current_position_all != 0:
+            if spread < intercept_std * 0.1 and spread > intercept_std * (-0.1) and (position_strawberries !=0):
+                
+            
+                if position_strawberries > 0:
+                    strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid, -max(min(position_strawberries, strawberries_bid_vol),0)))
+                    #strawberries_orders.append(Order('strawberries', strawberries_bid_2, -max(min(position_strawberries-strawberries_bid_vol, strawberries_bid_vol_2),0)))
+                    #strawberries_orders.append(Order('strawberries', strawberries_bid_3, -max(min(position_strawberries-strawberries_bid_vol-strawberries_bid_vol_2, strawberries_bid_vol_3),0)))
+                elif position_strawberries < 0:
+                    strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask, max(min(-position_strawberries, -strawberries_ask_vol),0)))
+                    #strawberries_orders.append(Order('strawberries', strawberries_ask_2, max(min(-position_strawberries+strawberries_ask_vol, -strawberries_ask_vol_2),0)))
+                    #strawberries_orders.append(Order('strawberries', strawberries_ask_3, max(min(-position_strawberries+strawberries_ask_vol+strawberries_ask_vol_2, -strawberries_ask_vol_3),0)))            
+            
+            #if z_score > 1: #BASKET OVER VALUED, SELL BASKET AND BUY INDIVIDUAL GOODS
+            if spread > intercept_std * 1:
+                #### SELLING BASKET AND BUYING INDIVIDUAL GOODS ####
+                #qt_basket = min(abs(sell_volume_basket), basket_bid_vol) 
+                print(qt_basket)
+                qt_chocolates = min(buy_volume_chocolates, abs(chocolates_ask_vol)) 
+                print(qt_chocolates)
+                qt_strawberries = min(buy_volume_strawberries, abs(strawberries_ask_vol)) 
+                print(qt_strawberries)
+                qt_roses = min(buy_volume_roses, abs(roses_ask_vol)) 
+                print(qt_roses)
+
+                #n_tradable = min(math.floor(qt_chocolates/beta_chocolates), math.floor(qt_strawberries/beta_strawberries))
+                n_tradable = 1
+                print(n_tradable)
+
+                if n_tradable > 0:
+                    #basket_orders.append(Order('GIFT_BASKET', basket_bid, sell_volume_basket))
+                    ##basket_orders.append(Order('GIFT_BASKET', basket_bid, - min(abs(n_tradable), basket_bid_vol)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_bid_2, - max(min(abs(n_tradable)-basket_bid, basket_bid_vol_2), 0)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_bid_3, - max(min(abs(n_tradable)-basket_bid_vol-basket_bid_vol_2, basket_bid_vol_3), 0)))
+                    
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask, min(math.floor(n_tradable*beta_chocolates), -chocolates_ask_vol)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_2, max(min(math.floor(n_tradable*beta_chocolates)+chocolates_ask_vol, -chocolates_ask_vol_2),0)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_3, max(min(n_tradable*4+chocolates_ask_vol+chocolates_ask_vol_2, -chocolates_ask_vol_3),0)))
+
+                    strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask, buy_volume_strawberries))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask_2, max(min(math.floor(n_tradable*beta_strawberries)+strawberries_ask_vol, -strawberries_ask_vol_2), 0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask_3, max(min(n_tradable*6+strawberries_ask_vol+strawberries_ask_vol_2, -strawberries_ask_vol_3),0)))
+
+                    ##roses_orders.append(Order('ROSES', roses_ask, max(min(math.floor(n_tradable*beta_roses ), -roses_ask_vol),0)))
+                    #roses_orders.append(Order('ROSES', roses_ask_2, max(min(math.floor(n_tradable*beta_roses )+roses_ask_vol, -roses_ask_vol_2),0)))
+                    #roses_orders.append(Order('ROSES', roses_ask_3, max(min(n_tradable+roses_ask_vol+roses_ask_vol_2, -roses_ask_vol_3),0)))
+                    
+                    
+            #elif z_score < -1: #BASKET UNDER VALUED, BUY BASKET AND SELL INDIVIDUAL GOODS
+            elif spread < intercept_std * (-1):
+                #### BUYING BASKET AND SELLING INDIVIDUAL GOODS ####
+                qt_basket = min(buy_volume_basket, abs(basket_ask_vol)) 
+                print(qt_basket)
+                qt_chocolates = min(abs(sell_volume_chocolates), chocolates_bid_vol) 
+                print(qt_chocolates)
+                qt_strawberries = min(abs(sell_volume_strawberries), strawberries_bid_vol) 
+                print(qt_strawberries)
+                qt_roses = min(abs(sell_volume_roses), roses_bid_vol) 
+                print(qt_roses)
+
+                #n_tradable = min(math.floor(qt_chocolates / beta_chocolates), math.floor(qt_strawberries / beta_strawberries))
+                n_tradable = 1
+                print(n_tradable)
+                if n_tradable > 0:
+                    #basket_orders.append(Order('GIFT_BASKET', basket_ask, buy_volume_basket))
+                    ##basket_orders.append(Order('GIFT_BASKET', basket_ask, min(n_tradable, -basket_ask_vol)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_ask_2, max(min(n_tradable+basket_ask_vol, -basket_ask_vol_2), 0)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_ask_3, max(min(n_tradable+basket_ask_vol+basket_ask_vol_2, -basket_ask_vol_3), 0)))
+                    
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid, sell_volume_chocolates))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid, -min(math.floor(n_tradable*beta_chocolates), chocolates_bid_vol)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_2,- max(min(math.floor(n_tradable*beta_chocolates)-chocolates_bid_vol, chocolates_bid_vol_2),0)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_3, -max(min(n_tradable*4-chocolates_bid_vol-chocolates_bid_vol_2, chocolates_bid_vol_3),0)))
+
+                    strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid, sell_volume_strawberries))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid_2,- max(min(math.floor(n_tradable*beta_strawberries)-strawberries_bid_vol, strawberries_bid_vol_2), 0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid_3, -max(min(n_tradable*6-strawberries_bid_vol-strawberries_bid_vol_2, strawberries_bid_vol_3),0)))
+
+                    ##roses_orders.append(Order('ROSES', roses_bid, -max(min(math.floor(n_tradable*beta_roses ), roses_bid_vol),0)))
+                    #roses_orders.append(Order('ROSES', roses_bid_2, -max(min(math.floor(n_tradable*beta_roses )-roses_bid_vol, roses_bid_vol_2),0)))
+                    #roses_orders.append(Order('ROSES', roses_bid_3, -max(min(n_tradable-roses_bid_vol-roses_bid_vol_2, roses_bid_vol_3),0)))   
+        
+        
+        if len(self.spreads_chocolates) >= 10:
+
+            intercept = 3878.8146
+            intercept_std = 41.821
+            #beta_chocolates = 5.2957
+            beta_chocolates = 1.3427
+
+            nav = beta_chocolates * chocolates_mid_price  + intercept
+            spread = roses_mid_price - nav
+            
+            #if z_score > -0.4 and z_score < 0.4 and current_position_all != 0:
+            if spread < intercept_std * 0.1 and spread > intercept_std * (-0.1) and (position_chocolates !=0):
+                
+                if position_chocolates > 0:
+                    chocolates_orders.append(Order('CHOCOLATE', chocolates_bid, -max(min(position_chocolates, chocolates_bid_vol),0)))
+                    #chocolates_orders.append(Order('chocolates', chocolates_bid_2, -max(min(position_chocolates-chocolates_bid_vol, chocolates_bid_vol_2),0)))
+                    #chocolates_orders.append(Order('chocolates', chocolates_bid_3, -max(min(position_chocolates-chocolates_bid_vol-chocolates_bid_vol_2, chocolates_bid_vol_3),0)))
+                elif position_chocolates < 0:
+                    chocolates_orders.append(Order('CHOCOLATE', chocolates_ask, max(min(-position_chocolates, -chocolates_ask_vol),0)))
+                    #chocolates_orders.append(Order('chocolates', chocolates_ask_2, max(min(-position_chocolates+chocolates_ask_vol, -chocolates_ask_vol_2),0)))
+                    #chocolates_orders.append(Order('chocolates', chocolates_ask_3, max(min(-position_chocolates+chocolates_ask_vol+chocolates_ask_vol_2, -chocolates_ask_vol_3),0))) 
+
+            
+            #if z_score > 1: #BASKET OVER VALUED, SELL BASKET AND BUY INDIVIDUAL GOODS
+            if spread > intercept_std * 1:
+                #### SELLING BASKET AND BUYING INDIVIDUAL GOODS ####
+                #qt_basket = min(abs(sell_volume_basket), basket_bid_vol) 
+                print(qt_basket)
+                qt_chocolates = min(buy_volume_chocolates, abs(chocolates_ask_vol)) 
+                print(qt_chocolates)
+                qt_strawberries = min(buy_volume_strawberries, abs(strawberries_ask_vol)) 
+                print(qt_strawberries)
+                qt_roses = min(buy_volume_roses, abs(roses_ask_vol)) 
+                print(qt_roses)
+
+                #n_tradable = min(math.floor(qt_chocolates/beta_chocolates), math.floor(qt_strawberries/beta_strawberries))
+                n_tradable = 1
+                print(n_tradable)
+
+                if n_tradable > 0:
+                    #basket_orders.append(Order('GIFT_BASKET', basket_bid, sell_volume_basket))
+                    ##basket_orders.append(Order('GIFT_BASKET', basket_bid, - min(abs(n_tradable), basket_bid_vol)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_bid_2, - max(min(abs(n_tradable)-basket_bid, basket_bid_vol_2), 0)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_bid_3, - max(min(abs(n_tradable)-basket_bid_vol-basket_bid_vol_2, basket_bid_vol_3), 0)))
+                    
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask, min(math.floor(n_tradable*beta_chocolates), -chocolates_ask_vol)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_2, max(min(math.floor(n_tradable*beta_chocolates)+chocolates_ask_vol, -chocolates_ask_vol_2),0)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_ask_3, max(min(n_tradable*4+chocolates_ask_vol+chocolates_ask_vol_2, -chocolates_ask_vol_3),0)))
+
+                    chocolates_orders.append(Order('CHOCOLATE', chocolates_ask, buy_volume_chocolates))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask_2, max(min(math.floor(n_tradable*beta_strawberries)+strawberries_ask_vol, -strawberries_ask_vol_2), 0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_ask_3, max(min(n_tradable*6+strawberries_ask_vol+strawberries_ask_vol_2, -strawberries_ask_vol_3),0)))
+
+                    ##roses_orders.append(Order('ROSES', roses_ask, max(min(math.floor(n_tradable*beta_roses ), -roses_ask_vol),0)))
+                    #roses_orders.append(Order('ROSES', roses_ask_2, max(min(math.floor(n_tradable*beta_roses )+roses_ask_vol, -roses_ask_vol_2),0)))
+                    #roses_orders.append(Order('ROSES', roses_ask_3, max(min(n_tradable+roses_ask_vol+roses_ask_vol_2, -roses_ask_vol_3),0)))
+                    
+                    
+            #elif z_score < -1: #BASKET UNDER VALUED, BUY BASKET AND SELL INDIVIDUAL GOODS
+            elif spread < intercept_std * (-1):
+                #### BUYING BASKET AND SELLING INDIVIDUAL GOODS ####
+                qt_basket = min(buy_volume_basket, abs(basket_ask_vol)) 
+                print(qt_basket)
+                qt_chocolates = min(abs(sell_volume_chocolates), chocolates_bid_vol) 
+                print(qt_chocolates)
+                qt_strawberries = min(abs(sell_volume_strawberries), strawberries_bid_vol) 
+                print(qt_strawberries)
+                qt_roses = min(abs(sell_volume_roses), roses_bid_vol) 
+                print(qt_roses)
+
+                #n_tradable = min(math.floor(qt_chocolates / beta_chocolates), math.floor(qt_strawberries / beta_strawberries))
+                n_tradable = 1
+                print(n_tradable)
+                if n_tradable > 0:
+                    #basket_orders.append(Order('GIFT_BASKET', basket_ask, buy_volume_basket))
+                    ##basket_orders.append(Order('GIFT_BASKET', basket_ask, min(n_tradable, -basket_ask_vol)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_ask_2, max(min(n_tradable+basket_ask_vol, -basket_ask_vol_2), 0)))
+                    #basket_orders.append(Order('GIFT_BASKET', basket_ask_3, max(min(n_tradable+basket_ask_vol+basket_ask_vol_2, -basket_ask_vol_3), 0)))
+                    
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid, sell_volume_chocolates))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid, -min(math.floor(n_tradable*beta_chocolates), chocolates_bid_vol)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_2,- max(min(math.floor(n_tradable*beta_chocolates)-chocolates_bid_vol, chocolates_bid_vol_2),0)))
+                    #chocolates_orders.append(Order('CHOCOLATE', chocolates_bid_3, -max(min(n_tradable*4-chocolates_bid_vol-chocolates_bid_vol_2, chocolates_bid_vol_3),0)))
+
+                    chocolates_orders.append(Order('CHOCOLATE', chocolates_bid, sell_volume_chocolates))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid_2,- max(min(math.floor(n_tradable*beta_strawberries)-strawberries_bid_vol, strawberries_bid_vol_2), 0)))
+                    #strawberries_orders.append(Order('STRAWBERRIES', strawberries_bid_3, -max(min(n_tradable*6-strawberries_bid_vol-strawberries_bid_vol_2, strawberries_bid_vol_3),0)))
+
+                    ##roses_orders.append(Order('ROSES', roses_bid, -max(min(math.floor(n_tradable*beta_roses ), roses_bid_vol),0)))
+                    #roses_orders.append(Order('ROSES', roses_bid_2, -max(min(math.floor(n_tradable*beta_roses )-roses_bid_vol, roses_bid_vol_2),0)))
+                    #roses_orders.append(Order('ROSES', roses_bid_3, -max(min(n_tradable-roses_bid_vol-roses_bid_vol_2, roses_bid_vol_3),0)))   
+        
+        
+
+        
+
+        while len(self.spreads_basket) > 300:
             self.spreads_basket.pop(0)
-        while len(self.ratios_basket) > 100:
+        while len(self.spreads_chocolates) > 200:
+            self.spreads_chocolates.pop(0)
+        while len(self.ratios_basket) > 300:
             self.ratios_basket.pop(0)
         #while len(self.etf_prices) > 15:
             #self.etf_prices.pop(0)
