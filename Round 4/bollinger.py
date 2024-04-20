@@ -1,9 +1,9 @@
 from typing import Dict, List
+from datamodel import OrderDepth, TradingState, Order, Symbol, Trade
+import math
 import pandas as pd
 import numpy as np
-import math
-from datamodel import OrderDepth, TradingState, Order, Symbol, Trade
-
+import statistics
 
 class Trader:
     PRODUCTS = [
@@ -24,21 +24,32 @@ class Trader:
     }
 
     def __init__(self):
-        self.data = {}
+        self.prices_history = {product: [] for product in self.PRODUCTS}
+        self.mid_prices_history = {product: [] for product in self.PRODUCTS}
+        self.p_diff_history = {product: [] for product in self.PRODUCTS}
+        self.errors_history = {product: [] for product in self.PRODUCTS}
+        self.forecasted_diff_history = {product: [] for product in self.PRODUCTS}
+        self.current_pnl = {product: 0 for product in self.PRODUCTS}
+        self.current_position = {product: 0 for product in self.PRODUCTS}
+        self.qt_traded = {product: 0 for product in self.PRODUCTS}
+        self.pnl_tracker = {product: [] for product in self.PRODUCTS}
 
     def calculate_bollinger_bands(self, prices: pd.Series, window: int = 30, num_std: float = 2):
-        rolling_mean = prices.rolling(window=window).mean()
-        rolling_std = prices.rolling(window=window).std()
-        upper_band = rolling_mean + (rolling_std * num_std)
-        lower_band = rolling_mean - (rolling_std * num_std)
-        return rolling_mean, upper_band, lower_band
+        mean = prices.rolling(window=window).mean()
+        std = prices.rolling(window=window).std()
+        upper_band = mean + (std * num_std)
+        lower_band = mean - (std * num_std)
+        return lower_band, upper_band
 
     def simulate_bollinger_strategy(self, prices: pd.Series) -> List[Order]:
-        mean, upper_band, lower_band = self.calculate_bollinger_bands(prices)
-        signals = pd.Series(index=prices.index, data=0)
-        signals[prices < lower_band] = 1  # Buy
-        signals[prices > upper_band] = -1  # Sell
-        return signals.tolist()  # For the purpose of order creation, return list of signals
+        lower_band, upper_band = self.calculate_bollinger_bands(prices)
+        orders = []
+        for i, price in enumerate(prices):
+            if price < lower_band[i]:
+                orders.append(Order('COCONUT', price, 'BUY'))
+            elif price > upper_band[i]:
+                orders.append(Order('COCONUT', price, 'SELL'))
+        return orders
 
     def calculate_vwap(self, trades: pd.DataFrame):
         vwap = (trades['price'] * trades['quantity']).cumsum() / trades['quantity'].cumsum()
@@ -46,43 +57,35 @@ class Trader:
 
     def simulate_vwap_strategy(self, trades: pd.DataFrame) -> List[Order]:
         vwap = self.calculate_vwap(trades)
-        signals = pd.Series(index=trades.index, data=0)
-        signals[trades['price'] < vwap] = 1  # Buy
-        signals[trades['price'] > vwap] = -1  # Sell
-        return signals.tolist()  # For the purpose of order creation, return list of signals
-
-    def coconut_strategy(self, state: TradingState) -> (List[Order], List[Order]):
-        coconut_prices = pd.Series([o.price for o in state.market_trades['COCONUT'] if o is not None])
-        coconut_trades = pd.DataFrame({
-            'price': [o.price for o in state.market_trades['COCONUT'] if o is not None],
-            'quantity': [o.quantity for o in state.market_trades['COCONUT'] if o is not None]
-        })
-        coconut_coupon_trades = pd.DataFrame({
-            'price': [o.price for o in state.market_trades['COCONUT_COUPON'] if o is not None],
-            'quantity': [o.quantity for o in state.market_trades['COCONUT_COUPON'] if o is not None]
-        })
-
-        coconut_signals = self.simulate_bollinger_strategy(coconut_prices)
-        coconut_coupon_signals = self.simulate_vwap_strategy(coconut_coupon_trades)
-
-        coconut_orders = [Order('COCONUT', p, q) for p, q in zip(coconut_prices, coconut_signals)]
-        coconut_coupon_orders = [Order('COCONUT_COUPON', p, q) for p, q in
-                                 zip(coconut_coupon_trades['price'], coconut_coupon_signals)]
-
-        return coconut_orders, coconut_coupon_orders
+        orders = []
+        for i, trade in trades.iterrows():
+            if trade['price'] < vwap[i]:
+                orders.append(Order('COCONUT_COUPON', trade['price'], 'BUY'))
+            elif trade['price'] > vwap[i]:
+                orders.append(Order('COCONUT_COUPON', trade['price'], 'SELL'))
+        return orders
 
     def run(self, state: TradingState):
-        result, conversions, traderData = {}, 0, "SAMPLE"
+        coconut_prices = pd.Series([t.price for t in state.market_trades['COCONUT'] if t is not None])
+        coconut_trades = pd.DataFrame({
+            'price': [t.price for t in state.market_trades['COCONUT'] if t is not None],
+            'quantity': [t.quantity for t in state.market_trades['COCONUT'] if t is not None]
+        })
+        coconut_coupon_trades = pd.DataFrame({
+            'price': [t.price for t in state.market_trades['COCONUT_COUPON'] if t is not None],
+            'quantity': [t.quantity for t in state.market_trades['COCONUT_COUPON'] if t is not None]
+        })
 
-        # Simulate strategies for Coconut and Coconut Coupon
-        try:
-            result['COCONUT'], result['COCONUT_COUPON'] = self.coconut_strategy(state)
-        except Exception as e:
-            print(f"Error in Coconut or Coconut Coupon strategy: {e}")
+        coconut_orders = self.simulate_bollinger_strategy(coconut_prices)
+        coconut_coupon_orders = self.simulate_vwap_strategy(coconut_coupon_trades)
 
-        return result, conversions, traderData
+        result = {
+            'COCONUT': coconut_orders,
+            'COCONUT_COUPON': coconut_coupon_orders
+        }
+        return result
 
-# Usage
+# Example usage
+# state = TradingState(...) 
 # trader = Trader()
-# state = TradingState(...)  # This needs to be defined based on the simulation environment
-# results, conversions, traderData = trader.run(state)
+# results = trader.run(state)
