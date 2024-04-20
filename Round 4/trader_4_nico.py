@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np
 import statistics
 
+
+
 class Trader:
 
     PRODUCTS = [
@@ -307,6 +309,8 @@ class Trader:
 
         return std_dev
 
+
+
     def calculate_order_book_imbalance(self, symbol, state: TradingState):
         if symbol not in state.order_depths:
             return None
@@ -322,6 +326,93 @@ class Trader:
             print(total_volume)
             return 0
     
+    def norm_cdf(self, x):
+        """
+        Calculate the CDF of the standard normal distribution at x.
+        """
+        return 0.5 * (1 + math.erf(x / math.sqrt(2)))
+
+    
+    def black_scholes_call(self, S, K, T, sigma, r=0.0):
+        """
+        Calculate the Black-Scholes price of a European call option using math.erf for the normal CDF.
+
+        Parameters:
+        - S (float): Current stock price
+        - K (float): Strike price of the option
+        - T (float): Time to expiration in years (250/365 for your case)
+        - sigma (float): Annualized volatility of the stock
+        - r (float): Risk-free rate, set to 0.0 as default
+
+        Returns:
+        - float: Price of the call option
+        """
+        # Calculate d1 and d2 components
+        d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+        d2 = d1 - sigma * np.sqrt(T)
+        
+        # Calculate the call price using the normal CDF approximation
+        call_price = (S * self.norm_cdf(d1) - K * math.exp(-r * T) * self.norm_cdf(d2))
+        return call_price
+    
+
+    def black_scholes_delta(self, S, K, T, sigma, r=0.0):
+        d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+        delta = self.norm_cdf(d1)  # Call option delta
+        return delta
+    
+    def black_scholes_gamma(self, S, K, T, sigma, r=0.0):
+        d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+        pdf_d1 = (1 / np.sqrt(2 * np.pi)) * np.exp(-0.5 * d1**2)  # Probability density function at d1
+        gamma = pdf_d1 / (S * sigma * np.sqrt(T))
+        return gamma
+    
+    def black_scholes_vega(self, S, K, T, sigma, r=0.0):
+        d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+        pdf_d1 = (1 / np.sqrt(2 * np.pi)) * np.exp(-0.5 * d1**2)  # Probability density function at d1
+        vega = S * pdf_d1 * np.sqrt(T)  # Vega is typically given per 1% change in volatility
+        return vega
+    
+
+    def implied_volatility(self, market_price, S, K, T, initial_sigma=0.2, tolerance=1e-5, max_iterations=100):
+        """
+        Estimate the implied volatility of a European call option using the bisection method.
+        
+        Parameters:
+        - market_price (float): The observed market price of the option.
+        - S (float): Current stock price.
+        - K (float): Strike price of the option.
+        - T (float): Time to expiration in years.
+        - initial_sigma (float): Initial guess for volatility.
+        - tolerance (float): Tolerance level for stopping the search.
+        - max_iterations (int): Maximum number of iterations to perform.
+        
+        Returns:
+        - float: Estimated implied volatility.
+        """
+        sigma_low = 0.001
+        sigma_high = 1.0
+        for i in range(max_iterations):
+            sigma_mid = (sigma_low + sigma_high) / 2
+            price_mid = black_scholes_call(S, K, T, sigma_mid, r=0.0)
+            
+            if price_mid > market_price:
+                sigma_high = sigma_mid
+            else:
+                sigma_low = sigma_mid
+                
+            if abs(price_mid - market_price) < tolerance:
+                return sigma_mid
+        
+        return (sigma_low + sigma_high) / 2  # Return the best estimate if convergence criterion not met
+
+
+
+
+
+    
+
+
     def amethysts_strategy(self, state : TradingState) -> List[Order]:
         """
         Buying and Selling based on last trade price vs mean price (ceiling floor version)
@@ -1136,6 +1227,23 @@ class Trader:
         #### POSITIONS ####
         position_coconut = self.get_position('COCONUT', state)
         position_coconut_coupon = self.get_position('COCONUT_COUPON', state)
+
+        #### QUANTITIES WE ARE ALLOWED TO TRADE ####
+        buy_volume_coconut = (self.POSITION_LIMITS['COCONUT'] - position_coconut) 
+        sell_volume_coconut = (- self.POSITION_LIMITS['COCONUT'] - position_coconut) 
+        buy_volume_coconut_coupon = (self.POSITION_LIMITS['COCONUT_COUPON'] - position_coconut_coupon) 
+        sell_volume_coconut_coupon = (- self.POSITION_LIMITS['COCONUT_COUPON'] - position_coconut_coupon) 
+
+        #### MID PRICES ####
+        coconut_mid_price = self.get_mid_price('COCONUT', state)
+        coconut_coupon_mid_price = self.get_mid_price('COCONUT_COUPON', state)
+
+        #### BIDS, ASKS, VOLUMES ####
+        coconut_bid, coconut_bid_vol = self.get_best_bid('COCONUT', state)
+        coconut_ask, coconut_ask_vol = self.get_best_ask('COCONUT', state)
+        coconut_coupon_bid, coconut_coupon_bid_vol = self.get_best_bid('COCONUT_COUPON', state)
+        coconut_coupon_ask, coconut_coupon_ask_vol = self.get_best_ask('COCONUT_COUPON', state)
+
 
 
         return coconut_orders, coconut_coupon_orders

@@ -34,7 +34,7 @@ for i, df in enumerate([df_0, df_1, df_2]):
 df = pd.concat([df_0, df_1])
 df = pd.concat([df, df_2])
 df = df.set_index('timestamp')
-df=df[df.index>20000]
+#df=df[df.index>27000]
 #print(df)
 
 #strawberries_bid = df[df['product'] == 'CHOCOLATE']['bid_price_1']
@@ -128,18 +128,36 @@ def linear_regression(y, x1, x2, x3):
         'Beta Std Errors': beta_std_errs
     }
 
-linear_regression(gift_basket.tolist(), chocolates.tolist(), strawberries.tolist(), roses.tolist())
-
-df = df[df.index>1000]
+#linear_regression(gift_basket.tolist(), chocolates.tolist(), strawberries.tolist(), roses.tolist())
 
 # To perform regression with an intercept
-X = df[['chocolates', 'strawberries', 'roses']]  # Independent variables
+X = df[['strawberries']]  # Independent variables
 X = sm.add_constant(X)  # Adds a constant term to the predictor
-Y = df['gift_basket']  # Dependent variable
+Y = df['chocolates'] # Dependent variable
 
 model_with_intercept = sm.OLS(Y, X).fit()  # Fit model
 print("Model with Intercept:")
 print(model_with_intercept.summary())  # Print the summary of regression results
+
+
+
+
+#chocolates, basket
+# roses, basket
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # To perform regression without an intercept
 X_no_intercept = df[['chocolates', 'strawberries', 'roses']]  # Independent variables
