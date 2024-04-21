@@ -1513,8 +1513,19 @@ class Trader:
 
         vol = 0.1612962156385183
         #vol = 0.1919
-        bs_price = self.black_scholes_call(coconut_mid_price, 10000, 246/365, vol, r=0.0)
+        bs_price = self.black_scholes_call(coconut_mid_price, 10000, 246/250, vol, r=0.0)
         #print('BS PRICE', bs_price)
+
+        portfolio_delta = position_coconut_coupon * delta
+
+        needed_buy_short = - portfolio_delta - position_coconut
+
+        
+        if needed_buy_short > 0:
+            coconut_orders.append(Order('COCONUT', coconut_ask, int(math.floor(min(needed_buy_short, buy_volume_coconut)))))
+        elif needed_buy_short < 0:
+            coconut_orders.append(Order('COCONUT', coconut_bid, int(math.floor(max(needed_buy_short, sell_volume_coconut)))))
+        
         
         if bs_price > coconut_coupon_ask+2:
             coconut_coupon_orders.append(Order('COCONUT_COUPON', coconut_coupon_ask, buy_volume_coconut_coupon))
