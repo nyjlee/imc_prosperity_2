@@ -16,6 +16,12 @@ import os
 from arch import arch_model
 
 
+forecasted = np.sqrt(1.0489105974177813 / 1e+08)
+annualized_volatility = forecasted * np.sqrt(252)
+#annualized_volatility = annualized_volatility * np.sqrt(10000)
+print(f"Annualized Forecasted Volatility: {annualized_volatility}")
+
+
 script_dir = os.path.dirname(__file__)
 
 
@@ -39,6 +45,17 @@ df = df.set_index('timestamp')
 
 coconut = df[df['product'] == 'COCONUT']['mid_price']
 coconut_coupon = df[df['product'] == 'COCONUT_COUPON']['mid_price']
+sampled_coconut_prices = coconut.iloc[::10]
+sampled_coconut_prices = sampled_coconut_prices.reset_index(drop=True)
+"""
+model = ARIMA(sampled_coconut_prices, order=(3,1,3))
+model_fit = model.fit()
+print(model_fit.summary())
+
+# Get the in-sample residuals
+residuals = model_fit.resid
+initial_errors = residuals[-10:] 
+print(initial_errors)
 
 df = pd.DataFrame({
     'coconut_price': coconut,
@@ -47,11 +64,20 @@ df = pd.DataFrame({
 
 df['coconut_returns'] = df['coconut_price'].pct_change().fillna(0)
 
-# Assuming df['coconut_returns'] contains the stock returns
+df['scaled_returns'] = df['coconut_returns'] * 1e+04
+
+
+# Fit the GARCH model using scaled returns
 garch_model = arch_model(df['coconut_returns'], vol='Garch', p=1, q=1, dist='Normal')
 model_result = garch_model.fit(update_freq=5)
-print(model_result.summary())
+# Retrieve the conditional variances
+conditional_variances = model_result.conditional_volatility ** 2
+# Get the last observed variance
+last_observed_variance = conditional_variances.iloc[-1]
+print("Last observed variance according to the GARCH model:", last_observed_variance)
 
+print(model_result.summary())
+"""
 
 def norm_cdf(x):
     """
@@ -112,7 +138,11 @@ def implied_volatility(market_price, S, K, T, initial_sigma=0.2, tolerance=1e-5,
     return (sigma_low + sigma_high) / 2  # Return the best estimate if convergence criterion not met
 
 
+vol = implied_volatility(637.63, 10000, 10000, 246/250)
+print('iv', vol)
 
+call_price = black_scholes_call(10000, 10000, 246/250, vol)
+print('call price', call_price)
 
 # Assuming the following values
 sigma = 0.195  # Estimated volatility (20% annualized)

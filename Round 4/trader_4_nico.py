@@ -69,6 +69,9 @@ class Trader:
     nav_prices = []
     nav_returns = []
 
+    coconuts_returns = []
+    last_variances = []
+
 
     def __init__(self) -> None:
 
@@ -87,6 +90,12 @@ class Trader:
             self.current_pnl[product] = 0
             self.qt_traded[product] = 0
             self.pnl_tracker[product] = []
+
+        self.omega = 0.2478
+        self.alpha = 8.9738e-03
+        self.beta = 0.7572
+
+        self.initial_last_variance = 1.0489105974177813
 
 
     def get_position(self, product, state : TradingState):
@@ -310,7 +319,6 @@ class Trader:
         return std_dev
 
 
-
     def calculate_order_book_imbalance(self, symbol, state: TradingState):
         if symbol not in state.order_depths:
             return None
@@ -332,7 +340,6 @@ class Trader:
         """
         return 0.5 * (1 + math.erf(x / math.sqrt(2)))
 
-    
     def black_scholes_call(self, S, K, T, sigma, r=0.0):
         """
         Calculate the Black-Scholes price of a European call option using math.erf for the normal CDF.
@@ -355,7 +362,6 @@ class Trader:
         call_price = (S * self.norm_cdf(d1) - K * math.exp(-r * T) * self.norm_cdf(d2))
         return call_price
     
-
     def black_scholes_delta(self, S, K, T, sigma, r=0.0):
         d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
         delta = self.norm_cdf(d1)  # Call option delta
@@ -394,7 +400,7 @@ class Trader:
         sigma_high = 1.0
         for i in range(max_iterations):
             sigma_mid = (sigma_low + sigma_high) / 2
-            price_mid = black_scholes_call(S, K, T, sigma_mid, r=0.0)
+            price_mid = self.black_scholes_call(S, K, T, sigma_mid, r=0.0)
             
             if price_mid > market_price:
                 sigma_high = sigma_mid
@@ -407,10 +413,33 @@ class Trader:
         return (sigma_low + sigma_high) / 2  # Return the best estimate if convergence criterion not met
 
 
+    def forecast_volatility(self, last_variance, last_return, omega, alpha, beta):
+        """
+        Forecast the next period's variance using the GARCH(1,1) model.
 
+        Parameters:
+        last_variance (float): The last known variance.
+        last_return (float): The last observed return.
+        omega (float): The GARCH model constant (long-run average variance).
+        alpha (float): The coefficient for the last period's squared return.
+        beta (float): The coefficient for the last period's variance.
 
+        Returns:
+        float: The forecasted variance for the next period.
+        """
+        scaling_factor = 1e+04
+        # Since the coefficients were obtained from scaled returns, we scale the last return
+        scaled_last_return = last_return * scaling_factor  # Adjust based on your scaling factor used in GARCH model estimation
+        
+        # Calculate the next period's variance using the GARCH(1,1) formula
+        next_variance = omega + alpha * (scaled_last_return ** 2) + beta * last_variance
 
-    
+        adjusted_vol = np.sqrt(next_variance / 1e+08)
+        annualized_volatility = adjusted_vol * np.sqrt(252)
+        annualized_volatility = annualized_volatility * np.sqrt(10000)
+        
+        # Return the forecasted variance, scaled back to the original scale
+        return next_variance, annualized_volatility
 
 
     def amethysts_strategy(self, state : TradingState) -> List[Order]:
@@ -494,7 +523,6 @@ class Trader:
         print(orders, last_price)
         
         return orders
-
     
     def starfruit_strategy(self, state : TradingState) -> List[Order]:
         """
@@ -1238,6 +1266,8 @@ class Trader:
         coconut_mid_price = self.get_mid_price('COCONUT', state)
         coconut_coupon_mid_price = self.get_mid_price('COCONUT_COUPON', state)
 
+        print('call price', coconut_coupon_mid_price)
+
         #### BIDS, ASKS, VOLUMES ####
         coconut_bid, coconut_bid_vol = self.get_best_bid('COCONUT', state)
         coconut_ask, coconut_ask_vol = self.get_best_ask('COCONUT', state)
@@ -1245,6 +1275,191 @@ class Trader:
         coconut_coupon_ask, coconut_coupon_ask_vol = self.get_best_ask('COCONUT_COUPON', state)
 
 
+        if len(self.last_variances) == 0:
+            self.last_variances.append(self.initial_last_variance)
+
+        last_variance = self.last_variances[-1]
+        
+        if len(self.mid_prices_history['COCONUT']) < 2:
+            return coconut_orders, coconut_coupon_orders
+        
+        last_return = (self.mid_prices_history['COCONUT'][-1] / self.mid_prices_history['COCONUT'][-2]) - 1
+        self.coconuts_returns.append(last_return)
+
+        next_variance, forecasted_volatility = self.forecast_volatility(last_variance, last_return, self.omega, self.alpha, self.beta)
+
+
+        implied_vol = self.implied_volatility(coconut_coupon_mid_price, coconut_mid_price, 10000, 246/250, initial_sigma=0.2, 
+                                              tolerance=1e-5, max_iterations=100)
+        
+        self.last_variances.append(next_variance)
+
+        delta = self.black_scholes_delta(coconut_mid_price, 10000, 246/250, implied_vol, 0)
+
+        print('implied vol', implied_vol)
+        #print('est vol', forecasted_volatility)
+        print('delta', delta)
+
+        gamma = self.black_scholes_gamma(coconut_mid_price, 10000, 246/250, implied_vol, 0)
+        print('gamma',gamma)
+
+        #portfolio_delta = delta * position_coconut_coupon + position_coconut WRONG
+        #print('\n PORT DELTA', portfolio_delta)
+
+        vol = 0.1612962156385183
+        bs_price = self.black_scholes_call(coconut_mid_price, 10000, 246/250, vol, r=0.0)
+        print('BS PRICE', bs_price)
+        
+        if bs_price > coconut_coupon_ask:
+            coconut_coupon_orders.append(Order('COCONUT_COUPON', coconut_coupon_ask, buy_volume_coconut_coupon))
+        elif bs_price < coconut_coupon_bid:
+            coconut_coupon_orders.append(Order('COCONUT_COUPON', coconut_coupon_bid, sell_volume_coconut_coupon))
+
+
+        #### GAMMA SCALPING ####
+        """
+        if position_coconut_coupon < 500:
+            qt_coconut_coupons = min(buy_volume_coconut_coupon, -coconut_coupon_ask_vol)
+            qt_coconut = min(abs(sell_volume_coconut), coconut_bid_vol)
+
+            qt_trade = min(qt_coconut_coupons*delta, qt_coconut)
+
+            coconut_coupon_orders.append(Order('COCONUT_COUPON', coconut_coupon_ask, int(math.floor(qt_trade/delta))))
+            coconut_orders.append(Order('COCONUT', coconut_bid, -int(math.floor(qt_trade))))
+
+            portfolio_delta = position_coconut_coupon * delta
+            needed_buy_short = - portfolio_delta - position_coconut
+
+        else:
+            portfolio_delta = position_coconut_coupon * delta
+
+            needed_buy_short = - portfolio_delta - position_coconut
+
+            if needed_buy_short > 0:
+                coconut_orders.append(Order('COCONUT', coconut_ask, int(math.floor(needed_buy_short))))
+            elif needed_buy_short < 0:
+                coconut_orders.append(Order('COCONUT', coconut_bid, int(math.floor(needed_buy_short))))
+
+        print('delta port', portfolio_delta)
+        print('position coconut',position_coconut)
+        """
+
+        #### PORTFOLIO DELTA ###
+        """
+        if portfolio_delta == 0:
+            qt_coconut_coupons = min(buy_volume_coconut_coupon, -coconut_coupon_ask_vol)
+            qt_coconut = min(abs(sell_volume_coconut), coconut_bid_vol)
+
+            qt_trade = min(qt_coconut_coupons*delta, qt_coconut)
+
+            coconut_coupon_orders.append(Order('COCONUT_COUPON', coconut_coupon_ask, int(math.floor(qt_trade/delta))))
+            coconut_orders.append(Order('COCONUT', coconut_bid, -int(math.floor(qt_trade))))
+
+        elif portfolio_delta > 0:
+            qt_coconut_coupons = min(abs(sell_volume_coconut_coupon), coconut_coupon_bid_vol)
+            qt_coconut = min(abs(sell_volume_coconut), coconut_bid_vol)
+
+            coconut_orders.append(Order('COCONUT', coconut_bid, -int(math.floor((min(sell_volume_coconut, qt_coconut))))))
+
+            #qt_coconut_coupons = min(buy_volume_coconut_coupon, -coconut_coupon_ask_vol)
+            #qt_coconut = max(min(abs(sell_volume_coconut), coconut_bid_vol-portfolio_delta),0)
+
+            #qt_trade = min(qt_coconut_coupons*delta, qt_coconut)
+
+            #coconut_coupon_orders.append(Order('COCONUT_COUPON', coconut_coupon_ask, int(math.floor(qt_trade/delta))))
+            #coconut_orders.append(Order('COCONUT', coconut_bid, -int(math.floor(qt_trade))))
+
+        elif portfolio_delta < 0:
+            qt_coconut_coupons = min(buy_volume_coconut_coupon, -coconut_coupon_ask_vol)
+            qt_coconut = min(buy_volume_coconut, -coconut_ask_vol)
+
+            coconut_orders.append(Order('COCONUT', coconut_ask, int(math.floor((min(abs(portfolio_delta), qt_coconut))))))
+
+            #qt_coconut_coupons = min(buy_volume_coconut_coupon, -coconut_coupon_ask_vol)
+            #qt_coconut = min(abs(sell_volume_coconut), coconut_bid_vol)
+
+            #qt_trade = min(qt_coconut_coupons*delta, qt_coconut)
+
+            #coconut_coupon_orders.append(Order('COCONUT_COUPON', coconut_coupon_ask, int(math.floor(qt_trade/delta))))
+            #coconut_orders.append(Order('COCONUT', coconut_bid, -int(math.floor(qt_trade))))
+        """
+            
+        #### VOLaTILITY STRATEGY BUT FORECAST NOT WORKING WELL YET ####
+        """
+        if implied_vol < forecasted_volatility:
+
+            #if position_coconut_coupon < 0:
+                #coconut_coupon_orders.append(Order('COCONUT_COUPON', coconut_coupon_ask, -position_coconut_coupon))
+
+
+            qt_coconut_coupons = min(buy_volume_coconut_coupon, -coconut_coupon_ask_vol)
+            qt_coconut = min(abs(sell_volume_coconut), coconut_bid_vol)
+
+            qt_trade = min(qt_coconut_coupons*delta, qt_coconut)
+
+            coconut_coupon_orders.append(Order('COCONUT_COUPON', coconut_coupon_ask, int(math.floor(qt_trade/delta))))
+            coconut_orders.append(Order('COCONUT', coconut_bid, -int(math.floor(qt_trade))))
+
+        elif implied_vol > forecasted_volatility:
+
+            #if position_coconut_coupon > 0:
+                #coconut_coupon_orders.append(Order('COCONUT_COUPON', coconut_coupon_bid, -position_coconut_coupon))
+
+            qt_coconut_coupons = min(abs(sell_volume_coconut_coupon), coconut_coupon_bid_vol)
+            qt_coconut = min(buy_volume_coconut, -coconut_ask_vol)
+
+            qt_trade = min(qt_coconut_coupons*delta, qt_coconut)
+
+            coconut_coupon_orders.append(Order('COCONUT_COUPON', coconut_coupon_bid, -int(math.floor(qt_trade/delta))))
+            coconut_orders.append(Order('COCONUT', coconut_ask, int(math.floor(qt_trade))))
+        """
+
+        #### ARIMA STRATEGY ####
+        """
+        if len(self.mid_p_diff_history['COCONUT']) >= 6:
+            AR_L1 = self.mid_p_diff_history['COCONUT'][-1]
+            AR_L2 = self.mid_p_diff_history['COCONUT'][-2]
+            AR_L3 = self.mid_p_diff_history['COCONUT'][-3]
+            AR_L4 = self.mid_p_diff_history['COCONUT'][-4]
+            AR_L5 = self.mid_p_diff_history['COCONUT'][-5]
+            AR_L6 = self.mid_p_diff_history['COCONUT'][-6]
+            AR_L7 = self.mid_p_diff_history['COCONUT'][-7]
+            AR_L8 = self.mid_p_diff_history['COCONUT'][-8]
+            AR_L9 = self.mid_p_diff_history['COCONUT'][-9]
+            AR_L10 = self.mid_p_diff_history['COCONUT'][-10]
+        
+        if len(self.forecasted_diff_history['COCONUT']) > 0:
+            forecasted_error = self.forecasted_diff_history['COCONUT'][-1] - self.mid_p_diff_history['COCONUT'][-1]
+            self.errors_history['COCONUT'].append(forecasted_error)
+
+        if len(self.errors_history['COCONUT']) < 2:
+            
+            self.errors_history['COCONUT'].extend([-0.969329, 0.450927, -1.473150])
+        else:
+            MA_L1 = self.errors_history['COCONUT'][-1]
+            MA_L2 = self.errors_history['COCONUT'][-2]
+            MA_L3 = self.errors_history['COCONUT'][-3]
+        
+    
+        forecasted_diff = (AR_L1 * -0.7060) + (AR_L2 * 0.5870) + (AR_L3 * 0.8943) + (AR_L4 * 0.0332)
+        + (AR_L5 * -0.0005) + (AR_L6 * -0.0052) + (AR_L7 * -0.0102) + (AR_L8 * -0.0058) + (AR_L9 * 0.0050) + (AR_L10 * -0.0013)
+        + (MA_L1 * 0.6745) + (MA_L2 * -0.6023) + (MA_L3 * -0.8658)
+
+
+        self.forecasted_diff_history['COCONUT'].append(forecasted_diff)
+
+        forecasted_price = coconut_mid_price + forecasted_diff  
+
+        print('forecast:', forecasted_price)
+        print('mid', coconut_mid_price)
+
+        #play with diff comb
+        if forecasted_diff > 0:
+            coconut_coupon_orders.append(Order('COCONUT_COUPON', coconut_coupon_ask, buy_volume_coconut_coupon))
+            
+        elif forecasted_diff < 0:
+            coconut_coupon_orders.append(Order('COCONUT_COUPON', coconut_coupon_bid, sell_volume_coconut_coupon))
+        """   
 
         return coconut_orders, coconut_coupon_orders
 
@@ -1307,6 +1522,11 @@ class Trader:
                 self.forecasted_diff_history[product].pop(0)
             while len(self.errors_history[product]) > 10:
                 self.errors_history[product].pop(0)
+            while len(self.last_variances) > 10:
+                self.last_variances.pop(0)
+            while len(self.coconuts_returns) > 10:
+                self.coconuts_returns.pop(0)
+
 
         
         """
