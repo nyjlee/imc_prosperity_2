@@ -16,6 +16,8 @@ csv_file_path_1 = os.path.join(script_dir, 'data', 'prices_round_1_day_-1.csv')
 csv_file_path_2 = os.path.join(script_dir, 'data', 'prices_round_1_day_-2.csv')
 csv_file_path_3 = os.path.join(script_dir, 'data', 'output_round1.csv')
 csv_file_path_4 = os.path.join(script_dir, 'data', 'output_round2.csv')
+csv_file_path_5 = os.path.join(script_dir, 'data', 'output_round3.csv')
+
 
 
 df_0 = pd.read_csv(csv_file_path_0, sep=';')
@@ -23,9 +25,10 @@ df_1 = pd.read_csv(csv_file_path_1, sep=';')
 df_2 = pd.read_csv(csv_file_path_2, sep=';')
 df_3 = pd.read_csv(csv_file_path_3, sep=';')
 df_4 = pd.read_csv(csv_file_path_4, sep=';')
+df_5 = pd.read_csv(csv_file_path_5, sep=';')
 
 
-for i, df in enumerate([df_2, df_1, df_0, df_3, df_4]):
+for i, df in enumerate([df_2, df_1, df_0, df_3, df_4, df_5]):
     df['timestamp'] = df['timestamp'] / 100 + i * 10000
 
 
@@ -33,6 +36,8 @@ df = pd.concat([df_2, df_1])
 df = pd.concat([df, df_0])
 df = pd.concat([df, df_3])
 df = pd.concat([df, df_4])
+df = pd.concat([df, df_5])
+
 #df = df[df['timestamp'] < 20000]
 df = df.set_index('timestamp')
 

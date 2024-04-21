@@ -146,11 +146,16 @@ print('call price', call_price)
 
 # Assuming the following values
 sigma = 0.195  # Estimated volatility (20% annualized)
-T = 250 / 365  # Time to expiration in years
+T = 246 / 250  # Time to expiration in years
 K =10000
 
+df = pd.DataFrame({
+    'coconut_price': coconut,
+    'coconut_call': coconut_coupon
+})
+
 # Calculate the call prices using the Black-Scholes formula
-df['call_price'] = df['coconut_price'].apply(lambda S: black_scholes_call(S, 10000, T, sigma))
+#df['call_price'] = df['coconut_price'].apply(lambda S: black_scholes_call(S, 10000, T, sigma))
 
 
 def calculate_iv(row):
@@ -160,5 +165,11 @@ def calculate_iv(row):
 
 # Apply the function to each row
 df['implied_vol'] = df.apply(calculate_iv, axis=1)
+
+max = df['implied_vol'].max()
+min = df['implied_vol'].min()
+
+print('max vol',max)
+print('min vol',min)
 
 print(df)

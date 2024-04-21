@@ -1,10 +1,118 @@
 from typing import Dict, List
-from datamodel import OrderDepth, TradingState, Order, Symbol, Trade
+from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
+
 import math
 import pandas as pd
 import numpy as np
 import statistics
+import json
+from typing import Any
 
+
+class Logger:
+    def __init__(self) -> None:
+        self.logs = ""
+        self.max_log_length = 3750
+
+    def print(self, *objects: Any, sep: str = " ", end: str = "\n") -> None:
+        self.logs += sep.join(map(str, objects)) + end
+
+    def flush(self, state: TradingState, orders: dict[Symbol, list[Order]], conversions: int, trader_data: str) -> None:
+        base_length = len(self.to_json([
+            self.compress_state(state, ""),
+            self.compress_orders(orders),
+            conversions,
+            "",
+            "",
+        ]))
+
+        # We truncate state.traderData, trader_data, and self.logs to the same max. length to fit the log limit
+        max_item_length = (self.max_log_length - base_length) // 3
+
+        print(self.to_json([
+            self.compress_state(state, self.truncate(state.traderData, max_item_length)),
+            self.compress_orders(orders),
+            conversions,
+            self.truncate(trader_data, max_item_length),
+            self.truncate(self.logs, max_item_length),
+        ]))
+
+        self.logs = ""
+
+    def compress_state(self, state: TradingState, trader_data: str) -> list[Any]:
+        return [
+            state.timestamp,
+            trader_data,
+            self.compress_listings(state.listings),
+            self.compress_order_depths(state.order_depths),
+            self.compress_trades(state.own_trades),
+            self.compress_trades(state.market_trades),
+            state.position,
+            self.compress_observations(state.observations),
+        ]
+
+    def compress_listings(self, listings: dict[Symbol, Listing]) -> list[list[Any]]:
+        compressed = []
+        for listing in listings.values():
+            compressed.append([listing["symbol"], listing["product"], listing["denomination"]])
+
+        return compressed
+
+    def compress_order_depths(self, order_depths: dict[Symbol, OrderDepth]) -> dict[Symbol, list[Any]]:
+        compressed = {}
+        for symbol, order_depth in order_depths.items():
+            compressed[symbol] = [order_depth.buy_orders, order_depth.sell_orders]
+
+        return compressed
+
+    def compress_trades(self, trades: dict[Symbol, list[Trade]]) -> list[list[Any]]:
+        compressed = []
+        for arr in trades.values():
+            for trade in arr:
+                compressed.append([
+                    trade.symbol,
+                    trade.price,
+                    trade.quantity,
+                    trade.buyer,
+                    trade.seller,
+                    trade.timestamp,
+                ])
+
+        return compressed
+
+    def compress_observations(self, observations: Observation) -> list[Any]:
+        conversion_observations = {}
+        for product, observation in observations.conversionObservations.items():
+            conversion_observations[product] = [
+                observation.bidPrice,
+                observation.askPrice,
+                observation.transportFees,
+                observation.exportTariff,
+                observation.importTariff,
+                observation.sunlight,
+                observation.humidity,
+            ]
+
+        return [observations.plainValueObservations, conversion_observations]
+
+    def compress_orders(self, orders: dict[Symbol, list[Order]]) -> list[list[Any]]:
+        compressed = []
+        for arr in orders.values():
+            for order in arr:
+                compressed.append([order.symbol, order.price, order.quantity])
+
+        return compressed
+
+    def to_json(self, value: Any) -> str:
+        return json.dumps(value, cls=ProsperityEncoder, separators=(",", ":"))
+
+    def truncate(self, value: str, max_length: int) -> str:
+        if len(value) <= max_length:
+            return value
+
+        return value[:max_length - 3] + "..."
+
+logger = Logger()
 
 
 class Trader:
@@ -132,14 +240,20 @@ class Trader:
     def get_best_bid(self, product, state: TradingState):
         market_bids = state.order_depths[product].buy_orders
         #best_bid = max(market_bids)
-        best_bid, best_bid_amount = list(market_bids.items())[0]
+        if len(market_bids) != 0:
+            best_bid, best_bid_amount = list(market_bids.items())[0]
+        else:
+            best_bid, best_bid_amount = 0, 0 
 
         return best_bid, best_bid_amount
 
     def get_best_ask(self, product, state: TradingState):
         market_asks = state.order_depths[product].sell_orders
         #best_ask = min(market_asks)
-        best_ask, best_ask_amount = list(market_asks.items())[0]
+        if len(market_asks) != 0:
+            best_ask, best_ask_amount = list(market_asks.items())[0]
+        else:
+            best_ask, best_ask_amount = 100000, 0
 
         return best_ask, best_ask_amount
 
@@ -524,6 +638,72 @@ class Trader:
         
         return orders
     
+
+    def amethysts_strategy2(self, state : TradingState) -> List[Order]:
+        """
+        Returns a list of orders with trades of amethysts.
+        """
+        orders = []
+
+        position_amethysts = self.get_position('AMETHYSTS', state)
+
+        bid_volume = self.POSITION_LIMITS['AMETHYSTS'] - position_amethysts
+        ask_volume = - self.POSITION_LIMITS['AMETHYSTS'] - position_amethysts
+
+        mid_price = self.get_mid_price('AMETHYSTS', state)
+
+        #bid_price, ask_price = self.get_order_book('AMETHYSTS', state)
+        bid_price = self.get_best_bid('AMETHYSTS', state)
+        ask_price = self.get_best_ask('AMETHYSTS', state)
+
+        if position_amethysts == 0:
+            # Not long nor short
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS']  - 1), bid_volume))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS']  + 1), ask_volume))
+        
+        elif position_amethysts > 15:
+            # Long position
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS']  - 3), bid_volume))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] +1), int(math.ceil((ask_volume/2)))))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] +2), int(math.floor((ask_volume/2)))))
+
+        elif position_amethysts < -15:
+            # Short position
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] -2), int(math.ceil((bid_volume/2)))))
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] -1), int(math.floor((bid_volume/2)))))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS']  + 3), ask_volume))
+
+        elif position_amethysts > 10:
+            # Long position
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS']  - 3), bid_volume))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] +1), int(math.ceil((ask_volume/2)))))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] +2), int(math.floor((ask_volume/2)))))
+
+        elif position_amethysts < -10:
+            # Short position
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] -2), int(math.ceil((bid_volume/2)))))
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] -1), int(math.floor((bid_volume/2)))))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS']  + 3), ask_volume))
+
+        elif position_amethysts > 0:
+            # Long position
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS']  - 2), bid_volume))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 1), int(math.ceil((ask_volume/2)))))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS'] + 2), int(math.floor((ask_volume/2)))))
+
+        elif position_amethysts < 0:
+            # Short position
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] -2), int(math.ceil((bid_volume/2)))))
+            orders.append(Order('AMETHYSTS', math.floor(self.ema_prices['AMETHYSTS'] -1), int(math.floor((bid_volume/2)))))
+            orders.append(Order('AMETHYSTS', math.ceil(self.ema_prices['AMETHYSTS']  + 2), ask_volume))
+
+
+        #print(orders)
+
+        return orders
+    
+
+
     def starfruit_strategy(self, state : TradingState) -> List[Order]:
         """
         Returns a list of orders with trades of starfruit.
@@ -559,7 +739,9 @@ class Trader:
             #use this!
             #self.errors_history['STARFRUIT'].extend([1.682936, -2.797327, -0.480615])
             
-            self.errors_history['STARFRUIT'].extend([0.021429, -0.490601, -1.861910])
+            self.errors_history['STARFRUIT'].extend([0.021429, -0.490601, -1.861910]) ### best one
+
+            #self.errors_history['STARFRUIT'].extend([-0.578542, 1.081536, 1.764008])
 
             #self.errors_history['STARFRUIT'].extend([-3.258368, -3.353484, -3.593285])
       
@@ -576,10 +758,12 @@ class Trader:
         #forecasted_diff = (AR_L1 * -1.4799) + (AR_L2 * -0.8168) + (AR_L3 * -0.0868) + (AR_L4 * -0.0693)
         #+ (AR_L5 * -0.0492) + (AR_L6 * -0.0221)+ (MA_L1 *  0.7712) + (MA_L2 * -0.2324) + (MA_L3 * -0.4996)
 
-        #new data2
+        #new data2 best one yet
         forecasted_diff = (AR_L1 * -1.4799) + (AR_L2 * -0.5811) + (AR_L3 * -0.0511) + (AR_L4 * -0.0402)
         + (AR_L5 * -0.0288) + (AR_L6 * -0.0113)+ (MA_L1 * 0.2766) + (MA_L2 * -0.1251) + (MA_L3 * -0.3693)
 
+        #forecasted_diff = (AR_L1 * -0.8938) + (AR_L2 * -0.6530) + (AR_L3 * -0.0280) + (AR_L4 * -0.0222)
+        #+ (AR_L5 * -0.0165) + (AR_L6 * -0.0074)+ (MA_L1 * 0.1823 ) + (MA_L2 * 0.0157) + (MA_L3 * -0.4415)
         
 
         self.forecasted_diff_history['STARFRUIT'].append(forecasted_diff)
@@ -976,6 +1160,12 @@ class Trader:
             intercept = 165.3320184325068
             intercept_std = 72.08630428543141
             betas = [3.84317626, 6.17179092, 1.05264383]
+
+            #intercept = -421.4553
+            #intercept_std = 47.103
+            #betas = [3.8385 , 6.3047, 1.0586]
+            
+            
             beta_chocolates = betas[0]
             beta_strawberries = betas[1]
             beta_roses = betas[2]
@@ -1041,6 +1231,10 @@ class Trader:
             intercept = 24820
             intercept_std = 163.617
             beta_roses = 3.1629
+
+            #intercept = 32260
+            #intercept_std = 86.827
+            #beta_roses = 2.6492
 
             nav = beta_roses * roses_mid_price + intercept
             #print('regression!')
@@ -1134,6 +1328,10 @@ class Trader:
             #beta_chocolates = 5.2957
             beta_strawberries = 10.9044
 
+            #intercept= -433.5429
+            #intercept_std = 267.348
+            #beta_strawberries = 17.6479
+
             nav = beta_strawberries * strawberries_mid_price  + intercept
             spread = basket_mid_price - nav
             
@@ -1185,6 +1383,11 @@ class Trader:
             intercept_std = 41.821
             #beta_chocolates = 5.2957
             beta_chocolates = 1.3427
+
+            #intercept = -1400.8233
+            #intercept_std = 74.048
+            #beta_chocolates = 5.2957
+            #beta_chocolates = 2.0010
 
             nav = beta_chocolates * chocolates_mid_price  + intercept
             spread = roses_mid_price - nav
@@ -1266,7 +1469,7 @@ class Trader:
         coconut_mid_price = self.get_mid_price('COCONUT', state)
         coconut_coupon_mid_price = self.get_mid_price('COCONUT_COUPON', state)
 
-        print('call price', coconut_coupon_mid_price)
+        #print('call price', coconut_coupon_mid_price)
 
         #### BIDS, ASKS, VOLUMES ####
         coconut_bid, coconut_bid_vol = self.get_best_bid('COCONUT', state)
@@ -1274,7 +1477,7 @@ class Trader:
         coconut_coupon_bid, coconut_coupon_bid_vol = self.get_best_bid('COCONUT_COUPON', state)
         coconut_coupon_ask, coconut_coupon_ask_vol = self.get_best_ask('COCONUT_COUPON', state)
 
-
+        """
         if len(self.last_variances) == 0:
             self.last_variances.append(self.initial_last_variance)
 
@@ -1288,33 +1491,38 @@ class Trader:
 
         next_variance, forecasted_volatility = self.forecast_volatility(last_variance, last_return, self.omega, self.alpha, self.beta)
 
+        """
 
         implied_vol = self.implied_volatility(coconut_coupon_mid_price, coconut_mid_price, 10000, 246/250, initial_sigma=0.2, 
                                               tolerance=1e-5, max_iterations=100)
         
-        self.last_variances.append(next_variance)
+        #self.last_variances.append(next_variance)
 
+        
         delta = self.black_scholes_delta(coconut_mid_price, 10000, 246/250, implied_vol, 0)
 
-        print('implied vol', implied_vol)
+        #print('implied vol', implied_vol)
         #print('est vol', forecasted_volatility)
-        print('delta', delta)
+        #print('delta', delta)
 
         gamma = self.black_scholes_gamma(coconut_mid_price, 10000, 246/250, implied_vol, 0)
-        print('gamma',gamma)
+        #print('gamma',gamma)
 
         #portfolio_delta = delta * position_coconut_coupon + position_coconut WRONG
         #print('\n PORT DELTA', portfolio_delta)
 
         vol = 0.1612962156385183
-        bs_price = self.black_scholes_call(coconut_mid_price, 10000, 246/250, vol, r=0.0)
-        print('BS PRICE', bs_price)
+        #vol = 0.1919
+        bs_price = self.black_scholes_call(coconut_mid_price, 10000, 246/365, vol, r=0.0)
+        #print('BS PRICE', bs_price)
         
-        if bs_price > coconut_coupon_ask:
+        if bs_price > coconut_coupon_ask+2:
             coconut_coupon_orders.append(Order('COCONUT_COUPON', coconut_coupon_ask, buy_volume_coconut_coupon))
-        elif bs_price < coconut_coupon_bid:
+        elif bs_price < coconut_coupon_bid-2:
             coconut_coupon_orders.append(Order('COCONUT_COUPON', coconut_coupon_bid, sell_volume_coconut_coupon))
 
+        #max vol 0.1697578300721943
+        #min vol 0.14901861264929178
 
         #### GAMMA SCALPING ####
         """
@@ -1537,7 +1745,6 @@ class Trader:
             print("Error in AMETHYSTS strategy")
             print(e)
         
-        
         # STARFRUIT STRATEGY
         try:
             result['STARFRUIT'] = self.starfruit_strategy(state)
@@ -1564,17 +1771,17 @@ class Trader:
         """
 
         # COCONUT AND COCONUT_COUPON STRATEGY
-        try:
-            result['COCONUT'], result['COCONUT_COUPON'] = self.coconut_strategy(state)
         
-        except Exception as e:
-            print(e)
+        result['COCONUT'], result['COCONUT_COUPON'] = self.coconut_strategy(state)
         
+
              
         traderData = "SAMPLE" 
         
 		# Sample conversion request. Check more details below. 
         #conversions = self.orchids_strategy2(state)[1]
         conversions = 0
+
+        logger.flush(state, result, conversions, traderData)
 
         return result, conversions, traderData

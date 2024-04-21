@@ -3,9 +3,10 @@
 import os
 
 script_dir = os.path.dirname(__file__)
-log_file_path = os.path.join(script_dir, 'data', 'round1_final.log')
-output_file_path = os.path.join(script_dir, 'data', 'output_round1')
-
+#log_file_path = os.path.join(script_dir, 'data', 'round1_final.log')
+#output_file_path = os.path.join(script_dir, 'data', 'output_round1')
+log_file_path = os.path.join(script_dir, 'data', 'round_3.log')
+output_file_path = os.path.join(script_dir, 'data', 'output_round3')
 
 def extract_prices_section(input_file, output_file):
     with open(input_file, 'r') as file:

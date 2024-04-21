@@ -20,19 +20,25 @@ script_dir = os.path.dirname(__file__)
 csv_file_path_0 = os.path.join(script_dir, 'data', 'prices_round_3_day_0.csv')
 csv_file_path_1 = os.path.join(script_dir, 'data', 'prices_round_3_day_1.csv')
 csv_file_path_2 = os.path.join(script_dir, 'data', 'prices_round_3_day_2.csv')
+csv_file_path_3 = os.path.join(script_dir, 'data', 'output_round3.csv')
+
 
 
 df_0 = pd.read_csv(csv_file_path_0, sep=';')
 df_1 = pd.read_csv(csv_file_path_1, sep=';')
 df_2 = pd.read_csv(csv_file_path_2, sep=';')
+df_3 = pd.read_csv(csv_file_path_3, sep=';')
 
 
-for i, df in enumerate([df_0, df_1, df_2]):
+
+for i, df in enumerate([df_0, df_1, df_2, df_3]):
     df['timestamp'] = df['timestamp'] / 100 + i * 10000
 
 
 df = pd.concat([df_0, df_1])
 df = pd.concat([df, df_2])
+df = pd.concat([df, df_3])
+
 df = df.set_index('timestamp')
 #df=df[df.index>27000]
 #print(df)
@@ -131,9 +137,9 @@ def linear_regression(y, x1, x2, x3):
 #linear_regression(gift_basket.tolist(), chocolates.tolist(), strawberries.tolist(), roses.tolist())
 
 # To perform regression with an intercept
-X = df[['strawberries']]  # Independent variables
+X = df[['chocolates']]  # Independent variables
 X = sm.add_constant(X)  # Adds a constant term to the predictor
-Y = df['chocolates'] # Dependent variable
+Y = df['roses'] # Dependent variable
 
 model_with_intercept = sm.OLS(Y, X).fit()  # Fit model
 print("Model with Intercept:")
