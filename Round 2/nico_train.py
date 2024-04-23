@@ -8,7 +8,7 @@ from pmdarima import auto_arima
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.api import VAR
-
+import statsmodels.api as sm
 import os
 
 script_dir = os.path.dirname(__file__)
@@ -22,7 +22,7 @@ csv_file_path_2 = os.path.join(script_dir, 'data', 'prices_round_2_day_1.csv')
 df_0 = pd.read_csv(csv_file_path_0, sep=';')
 df_1 = pd.read_csv(csv_file_path_1, sep=';')
 df_2 = pd.read_csv(csv_file_path_2, sep=';')
-
+ 
 
 for i, df in enumerate([df_0, df_1, df_2]):
     df['timestamp'] = df['timestamp'] / 100 + i * 10000
@@ -32,17 +32,80 @@ df = pd.concat([df_0, df_1])
 orchids_df = pd.concat([df, df_2])
 orchids_df = orchids_df.set_index('timestamp')
 orchids_df['SL_RATIO'] = orchids_df['SUNLIGHT'] / orchids_df['HUMIDITY']
+orchids_df['SUNLIGHT'] = orchids_df['SUNLIGHT']
+orchids_df['HUMIDITY'] = orchids_df['HUMIDITY']
+orchids_df['SUN^2'] = orchids_df['SUNLIGHT'] ** 2
+orchids_df['HUM^2'] = orchids_df['HUMIDITY'] ** 2
+orchids_df['SUNxHUM'] = orchids_df['HUMIDITY'] * orchids_df['SUNLIGHT']
+orchids_df = orchids_df.dropna()
+
 print(orchids_df['SL_RATIO'].mean())
+
+
+df_var = orchids_df[['ORCHIDS']]
+df_var = df_var.iloc[::5, :].reset_index(drop=True)
+
+
+
+model = ARIMA(df_var, order=(3,1,2))
+model_fit = model.fit()
+print(model_fit.summary())
+
+# Get the in-sample residuals
+residuals = model_fit.resid
+initial_errors = residuals[-2:] 
+print(initial_errors)
+
+
+
+
+df_diff = df_var.diff().dropna()
+
+print(df_diff)
+
+# Assume df_diff is your differenced DataFrame prepared for the VAR model
+model = VAR(df_diff)
+
+# Select the optimal lag order with criteria
+lag_results = model.select_order(maxlags=3)
+print(lag_results.summary())
+
+
+model = VAR(df_diff)
+results = model.fit(maxlags=3, ic='aic')
+
+# Assuming `results` is the fitted VAR model from earlier
+model_summary = results.summary()
+print(model_summary)
+
+
+
+
+
+# To perform regression with an intercept
+X = orchids_df[['SUNLIGHT', 'HUMIDITY']]  # Independent variables
+X = sm.add_constant(X)  # Adds a constant term to the predictor
+Y = orchids_df['ORCHIDS'] # Dependent variable
+
+model_with_intercept = sm.OLS(Y, X).fit()  # Fit model
+print("Model with Intercept:")
+print(model_with_intercept.summary())  # Print the summary of regression results
+
+
+
+
+
+
 
 for df in [df_0, df_1, df_2, orchids_df]:
     df['SL_RATIO'] = df['SUNLIGHT'] / (df['HUMIDITY'])
     df['XM_RATIO'] = df['EXPORT_TARIFF'] / abs(df['IMPORT_TARIFF'])
 
-    df['HUM'] = (df['HUMIDITY'].shift(-1) - df['HUMIDITY']) 
-    df['SUN'] = (df['SUNLIGHT'].shift(-1) - df['SUNLIGHT']) 
+    df['HUM'] = (df['HUMIDITY'].shift(20) - df['HUMIDITY']) 
+    df['SUN'] = (df['SUNLIGHT'].shift(20) - df['SUNLIGHT']) 
     df['SLRC'] = (df['SL_RATIO'].shift(5) / df['SL_RATIO']) -1
     # Calculate the first derivative of the ratio
-    df['First_Derivative'] = df['SLRC'].diff()
+    df['First_Derivative'] = df['SUN'].diff()
 
     df['XM_Derivative'] = df['XM_RATIO'].diff()
 
@@ -97,7 +160,7 @@ def plot_orchids(data):
     ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
     color = 'tab:blue'
     ax2.set_ylabel('Sunlight to Humidity Ratio', color=color)
-    ax2.plot(data.index, data['First_Derivative'], color=color)
+    ax2.plot(data.index, data['HUM'], color=color)
     ax2.tick_params(axis='y', labelcolor=color)
 
     # Add a title and grid
@@ -143,9 +206,9 @@ def plot_orchids2(data):
     plt.grid(True)
     plt.show()
 
-#plot_orchids(df_0)
-#plot_orchids(df_1)
-#plot_orchids(df_2)
+plot_orchids(df_0)
+plot_orchids(df_1)
+plot_orchids(df_2)
 
 
 """

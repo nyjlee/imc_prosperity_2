@@ -1397,9 +1397,18 @@ class Trader:
 
         #print('the coconut sd is:', std)
         if coconut_mid_price < lower_band:
+            self.current_signal['COCONUT'] = 'BUY BB'
             coconut_orders.append(Order('COCONUT', coconut_ask, buy_volume_coconut))
         if coconut_mid_price > upper_band:
             coconut_orders.append(Order('COCONUT', coconut_bid, sell_volume_coconut))
+            self.current_signal['COCONUT'] = 'SELL BB'
+
+        if self.current_signal['COCONUT'] == 'BUY BB':
+            coconut_orders.append(Order('COCONUT', coconut_ask, buy_volume_coconut))
+        if self.current_signal['COCONUT'] == 'SELL BB':
+            coconut_orders.append(Order('COCONUT', coconut_bid, sell_volume_coconut))
+        
+
         #print('the coconut mean is:', mean)
         #print('the coconut std is:', std)
         #print(len(self.prices_history['COCONUT']))
